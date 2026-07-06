@@ -8,33 +8,21 @@
 **Data backend:** GoHighLevel (GHL) sub-account via Private Integration Token (PIT)
 **Auth:** Supabase
 
-### Where the docs live (two repositories)
+### Where the docs live
 
-This PRD lives in the **Vibe AI build repo** (writable — where the app is built). The full **design source, prototype code, and granular reference docs live in a separate, read-only Design repo.**
+This PRD lives in the build repo alongside the app source. The design system (`design.md`), integration mapping, and schema docs in this repo are the complete reference set — the app source itself is now the canonical implementation of the design.
 
-> **Design repo (read-only reference):** https://github.com/rockonconsulting1-maker/RealEstate-Pro-CRM---Design
-> The build agent can **read** this repo to see the design files and docs but **cannot write** to it. All files listed under "Design repo" below are found there and nowhere in the build repo.
-
-**Companion documents in THIS (Vibe AI build) repo:**
+**Companion documents in this repo:**
 
 - `PRD.md` — this document (product requirements: the *what/why*)
-- `TASKS.md` — engineering build plan, phased and ordered (the *how*)
-- `PROMPT.md` — per-phase build prompts for the AI agent
+- `TASKS.md` — the current remediation plan (dependency-ordered tasks with instructions and acceptance criteria)
+- `REVIEW_REPORT.md` — full-repo review findings driving the remediation plan
 - `design.md` — design system (tokens, primitives, patterns, file map)
 - `GHL_Integration_Mapping.md` — screen → GHL endpoint/field mapping
 - `Real Estate Pro CRM — Full Integration Schema.md` — consolidated GHL data schema (object catalog, data dictionary, associations, ERD)
+- `Entity Breakdown.md` — entity-level breakdown supporting the schema doc
 
-**Reference documents in the DESIGN repo (read-only — read via the URL above):**
-
-- `SCREENS.md` + `RC CRM Screen Inventory.html` — full screen/modal inventory (desktop, mobile, auth)
-- `RC CRM Desktop.html`, `RC CRM Mobile.html`, `RC CRM Auth Desktop.html`, `RC CRM Auth Mobile.html` — prototype entry points
-- `desktop/*.jsx`, `mobile/*.jsx`, `styles.css` — the pre-built visual prototype (shape/interaction reference only — **not** production code)
-- `SECTION_1`–`SECTION_6` — granular schema docs (source for the consolidated schema in this repo)
-- `GoHighLevel__GHL__API_Integration.txt` + `Associations_Apis-*.md` — GHL API reference
-- `Buyer-Seller-Journeys.md` — pipeline stages, stage-mapped tasks & documents, portal plan
-- `Supabase_Intergration_Docs.txt` — Supabase auth/config reference
-
-See **`AGENTS.md`** (this repo) for a navigation guide that maps every task to the right doc across both repos.
+See **`AGENTS.md`** for a navigation guide that maps every task to the right doc.
 
 ---
 
@@ -58,13 +46,13 @@ The voice and feel are defined in `design.md`: professional, understated, dense,
 2. Model the real-estate workflow natively — Leads → Clients (Buyer/Seller transactions) → Offers → Transactions → Closed — on top of GHL pipelines and custom objects.
 3. Deliver a **seamless, near-instant UX** despite a remote CRM backend, through aggressive prefetch, persisted cache, and optimistic updates (§7).
 4. Work equally well on desktop and phone from one codebase, matching the pre-designed prototype pixel-for-intent.
-5. Operate entirely on **live GHL data** — no mock data in the shipped app. The prototype's `mobile/data.jsx` (in the read-only Design repo) is a shape reference only.
+5. Operate entirely on **live GHL data** — no mock data in the shipped app.
 
 ### 2.2 Non-goals (v1)
 
 - No Supabase Edge Function proxy, no GHL webhooks, no server-side sync engine (v2).
 - No rentals workflow anywhere in the product (Clients are Buyers and Sellers only).
-- No public/consumer-facing client portal (the portal spec in `Buyer-Seller-Journeys.md` is future work).
+- No public/consumer-facing client portal (future work).
 - No billing, marketing funnels, courses/memberships, e-commerce, or website/blog modules from the wider GHL object catalog — those objects exist in the sub-account but are not surfaced.
 - No multi-agency or agency-level administration; the app is scoped to a single sub-account (`locationId`).
 - No native mobile app store build (responsive web only; installable PWA is a nice-to-have, not a requirement).
@@ -219,7 +207,7 @@ Many-to-many relationships use the GHL Associations API (keys + relations). Requ
 | Opportunity | Transaction | `opportunity_to_transaction` |
 | Contact | Company | `SYSTEM: BUSINESSES_CONTACTS_ASSOCIATION` |
 
-Association keys are resolved at bootstrap. Full relationship matrix and cardinality live in `SECTION_4`.
+Association keys are resolved at bootstrap. Full relationship matrix and cardinality live in `Real Estate Pro CRM — Full Integration Schema.md`.
 
 ### 6.5 API versioning & rate limits
 
@@ -337,7 +325,7 @@ Each module's detailed screen/endpoint/field mapping is in `GHL_Integration_Mapp
 ### 8.14 Docs (Vault)
 
 - Supabase Storage `documents` bucket + metadata table; GHL `documents_ref` stores UUIDs.
-- Category folders (Listing Agreements · Offer Docs · Inspection Reports · Client Files · MLS Sheets, plus journey doc types from `Buyer-Seller-Journeys.md §2`); upload (drag-drop / picker) with progress, preview (pdf/image), download, rename, delete; link-to-record picker; filtered views surface in each record's Documents tab; search + filter + sort.
+- Category folders (Listing Agreements · Offer Docs · Inspection Reports · Client Files · MLS Sheets, plus buyer/seller journey doc types as a tag taxonomy); upload (drag-drop / picker) with progress, preview (pdf/image), download, rename, delete; link-to-record picker; filtered views surface in each record's Documents tab; search + filter + sort.
 
 ### 8.15 Reports
 
@@ -361,9 +349,9 @@ Each module's detailed screen/endpoint/field mapping is in `GHL_Integration_Mapp
 
 ## 9. Design System Requirements
 
-The product implements `design.md` (this repo) exactly. The raw token values, primitives, and layouts to port from live in the **Design repo** prototype files (`styles.css`, `desktop/shell.jsx`, `desktop/*.jsx`, `mobile/*.jsx`) — read them there; do not recreate from memory. Key requirements:
+The product implements `design.md` (this repo) exactly — the token values, primitives, and layouts are specified there and already ported into the app source (`src/styles/`, `src/components/shared/primitives.tsx`). Key requirements:
 
-- **OKLCH token system** (source: Design-repo `styles.css` + `design.md`) ported into `src/styles/tokens.css` and mapped into Tailwind (colors, radius, shadows, spacing, typography). One accent (calm blue) carries selection/focus/active; role hues (Buyer/Seller/Past/Vendor/SOI) and stage dots encode meaning only — never decoration. Stage colors never fill cards.
+- **OKLCH token system** (source: `design.md`) ported into `src/styles/tokens.css` and mapped into Tailwind (colors, radius, shadows, spacing, typography). One accent (calm blue) carries selection/focus/active; role hues (Buyer/Seller/Past/Vendor/SOI) and stage dots encode meaning only — never decoration. Stage colors never fill cards.
 - **Typography:** Inter for text, JetBrains Mono for any digit/identifier whose alignment matters; tabular numerals for all money/time/counts; `Money`, `Countdown`, `Spark`, `Avatar`, `StageDot`, `TempBadge`, `RoleBadge` shared primitives.
 - **Layout:** desktop shell (232px sidebar + 60px topbar + page); mobile shell (status spacer + topbar + scroll + FAB + 6-col blurred tabbar). Master-detail split panes on desktop; swipe actions, bottom sheets, and the "Now" ribbon on mobile.
 - **Time as first-class:** every deadline shows a countdown chip whose tone reflects urgency (ok / warn / danger / expired), driven by shared logic used for offer expiry and task urgency alike.
@@ -410,7 +398,7 @@ The product implements `design.md` (this repo) exactly. The raw token values, pr
 |---|---|
 | Warm-cache render of primary screens | ≤200ms perceived; content (not spinner) on first paint |
 | Cold-load first meaningful paint | Skeleton immediately; data within one revalidation cycle |
-| Screen coverage vs inventory | 100% of `SCREENS.md` + Screen Inventory (all desktop, mobile, and auth screens) |
+| Screen coverage vs inventory | 100% of the screen inventory (all desktop, mobile, and auth screens per §8 module requirements) |
 | Live-data coverage | 0 mock records in shipped app; every list/detail/KPI reads live |
 | Mutation feedback | 100% of mutations produce optimistic UI + toast; rollback on error |
 | Rate-limit incidents | 0 user-visible 429 failures under normal single-agent usage (queue absorbs bursts) |
@@ -435,7 +423,7 @@ The product implements `design.md` (this repo) exactly. The raw token values, pr
 
 ## 13. Release Plan (Phased, ordered — no dates)
 
-Phases are ordered by dependency, not schedule (per the companion `TASKS.md` / `PROMPT.md`).
+Phases are ordered by dependency, not schedule (per the companion `TASKS.md`).
 
 1. **Foundation** — scaffold/tooling, design-system port, responsive shell & navigation.
 2. **Auth & integration layer** — Supabase auth + guards + profile/credentials tables; GHL client & typed services; query architecture, bootstrap prefetch, cache persistence; Settings ▸ Integrations onboarding.
@@ -457,7 +445,7 @@ Phases are ordered by dependency, not schedule (per the companion `TASKS.md` / `
 18. **Settings** (full).
 19. **Cross-cutting completion** — Quick Add/FAB, global search, notifications, QA/accessibility/performance pass, README.
 
-**v2 (out of scope here):** Supabase Edge Function proxy (PIT never in browser) + GHL webhooks for push updates; client-facing portal per `Buyer-Seller-Journeys.md`.
+**v2 (out of scope here):** Supabase Edge Function proxy (PIT never in browser) + GHL webhooks for push updates; client-facing portal.
 
 ---
 
@@ -489,8 +477,8 @@ Phases are ordered by dependency, not schedule (per the companion `TASKS.md` / `
 - **Pipelines:** Lead Nurture; Buyer Transaction (10 stages); Seller Transaction (9 stages) — IDs resolved at bootstrap.
 - **Association keys:** `offer_to_contact`, `offer_to_property`, `opportunity_to_property`, `mls_to_property`, `opportunity_to_transaction`, `BUSINESSES_CONTACTS_ASSOCIATION`.
 - **Field/tag dictionaries & full field mapping:** `GHL_Integration_Mapping.md §18–22`.
-- **Full data dictionary / ERD / associations:** `SECTION_2`, `SECTION_4`, `SECTION_6`.
+- **Full data dictionary / ERD / associations:** `Real Estate Pro CRM — Full Integration Schema.md` + `Entity Breakdown.md`.
 
 ---
 
-*End of PRD. This document defines requirements and intent. Engineering execution steps live in `TASKS.md`; per-phase build prompts live in `PROMPT.md`; the design system lives in `design.md` (this repo). The visual/interaction prototype and granular reference docs live in the read-only Design repo: https://github.com/rockonconsulting1-maker/RealEstate-Pro-CRM---Design. See `AGENTS.md` for a full doc-navigation map.*
+*End of PRD. This document defines requirements and intent. Engineering execution steps live in `TASKS.md` (the current remediation plan); review findings live in `REVIEW_REPORT.md`; the design system lives in `design.md`. See `AGENTS.md` for a full doc-navigation map.*

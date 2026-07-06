@@ -7,13 +7,11 @@ and offer ops. Both surfaces share one design language; this document is the
 source of truth for tokens, primitives, and the patterns that make the product
 feel coherent across screens.
 
-This design system was authored against the visual prototype (static HTML/JSX
-in the read-only Design repo) and is the source of truth for the **production
-build** — a single responsive **React 18 + TypeScript** app. The build must
-match the prototype: the tokens, primitives, and patterns below map directly
-onto the production stack (see "Stack & implementation" below). The prototype
-is a shape/interaction reference; the tokens here — not the prototype's raw
-CSS — are authoritative.
+This design system is the source of truth for the **production
+build** — a single responsive **React 18 + TypeScript** app. The
+tokens, primitives, and patterns below map directly
+onto the production stack (see "Stack & implementation" below); the token
+values here are authoritative and live in code at `src/styles/tokens.css`.
 
 The voice is **professional, human, slightly understated**. The product is a
 working tool, not a marketing site — so we avoid ornament, gradients, glass,
@@ -572,13 +570,6 @@ src/
   hooks/                 · useSurface(), useBootstrap(), shared hooks
   types/                 · TS types (Zod-inferred)
 ```
-
-**Prototype origin (read-only Design repo):** the static prototype
-(`RC CRM Desktop.html`, `RC CRM Mobile.html`, `RC CRM Auth *.html`,
-`RC CRM Screen Inventory.html`, `desktop/*.jsx`, `mobile/*.jsx`, and the two
-`styles.css` files) lives in the Design repo and is the *shape/interaction*
-reference only. Port visuals and layouts from it; do not ship its code, its
-mock `data.jsx`, or its `window.Icon`/`window.MOCK` globals.
 
 Token edits live in **one** place: `src/styles/tokens.css` (+ the Tailwind
 theme that reads it). Both surfaces consume the same variables, so a brand

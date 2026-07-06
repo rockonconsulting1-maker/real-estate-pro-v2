@@ -1,8 +1,8 @@
 # Repository Review Report — Real Estate Pro CRM v2
 
-**Date:** 2026-07-06
+**Date:** 2026-07-06 (updated same day with second, deeper pass — see §9)
 **Branch reviewed:** `main` (34078cb)
-**Scope:** Full-repo review against `TASKS.md` (original master build checklist), PRD, and the GHL API 2.0 integration spec. Toolchain verification: install, typecheck, lint, test, production build.
+**Scope:** Full-repo review against the original master build checklist, PRD, and the GHL API 2.0 integration spec. Toolchain verification: install, typecheck, lint, test, production build. Second pass: auth/session lifecycle, Supabase migrations & storage policies, settings persistence, dashboard/report calculations, and shared hooks.
 
 ---
 
@@ -16,7 +16,7 @@ There is also a **bootstrap race condition** that can cause the very first load 
 
 Additionally, **~10 checklist items marked `[x]` in TASKS.md are not actually implemented** (details in §4), lint fails with 338 errors, and test coverage is effectively zero (1 placeholder test).
 
-**Verdict: NOT ready for release.** Estimated remediation: ~35 tasks, grouped in the new `TASKS.md`.
+**Verdict: NOT ready for release.** Remediation: 37 tasks across 6 workstreams, grouped in the new `TASKS.md`. The deep pass (§9) added two Supabase storage security findings, a broken sign-in redirect, and analytics-correctness issues on top of the first-pass GHL integration bugs.
 
 ---
 
@@ -125,4 +125,46 @@ Conversely, **Phase 5.1 (Contacts directory) is unchecked `[ ]` but mostly done*
 
 ## 8. Remediation plan
 
-See the new **`TASKS.md`** for the full breakdown: 35 tasks across 6 workstreams (A: GHL API corrections, B: bootstrap/credentials lifecycle, C: mis-checked feature gaps, D: code quality/lint/tests, E: security/hygiene, F: performance/polish), each with file paths, step-by-step instructions, and acceptance criteria for the Dev Agent.
+See the new **`TASKS.md`** for the full breakdown across 6 workstreams (A: GHL API corrections, B: bootstrap/credentials lifecycle, C: mis-checked feature gaps, D: code quality/lint/tests, E: security/hygiene, F: performance/polish), each with file paths, step-by-step instructions, and acceptance criteria for the Dev Agent.
+
+---
+
+## 9. Deep-pass findings (second review)
+
+### 9.1 Security — Supabase storage policies
+
+**S1 (HIGH). Avatars bucket policies are wide open** (`supabase/migrations/0004_avatars_bucket.sql`). The insert/update/delete policies check only `bucket_id = 'avatars'` — no `auth.uid()` ownership check and no `to authenticated` role restriction. Despite the policy names ("Anyone can update **their own** avatar"), **any user — including anonymous clients holding the public publishable key — can upload, overwrite, or delete any user's avatar**. → Task **E4**.
+
+**S2 (HIGH). The `documents` storage bucket is never provisioned.** `0002_documents.sql` creates only the metadata table; a comment says the bucket and its storage RLS "need to be created in the Supabase dashboard." On any fresh environment the Docs vault upload fails (`storage.ts` uploads to bucket `documents`). Infrastructure-as-code gap and an unwritten owner-scoping requirement. → Task **E5**.
+
+### 9.2 Auth/session correctness
+
+**S3 (HIGH). `?next=` redirect is never consumed.** `ProtectedRoute` redirects to `/auth/sign-in?next=<intended path>`, but `sign-in.tsx:47` hardcodes `navigate('/')` after login. The claimed "preserve intended path" behavior (original 1.2, marked done) doesn't work. → Task **B5**.
+
+**S4 (MEDIUM). Sign-out doesn't clear state.** `auth-provider.tsx` `signOut()` only calls `supabase.auth.signOut()` — the persisted+in-memory query cache (another user's contacts, KPIs, docs metadata) and the module-level GHL credentials survive into the next session on the same browser. (Covered by task B1 step 4; called out here as a distinct data-leak finding.)
+
+### 9.3 Data correctness — dashboards & reports
+
+**S5 (HIGH). Reports aggregate only the first page.** `reports/desktop-view.tsx` (and mobile) fetch exactly one page of 100 opportunities / 100 contacts / 100 listings and compute GCI, deal volume, funnel, source attribution, and average DOM from that. Any account with >100 records gets silently wrong analytics. The original claim was "aggregates computed client-side from **paged** live queries." Also: GCI/deal-volume bucket **won** opportunities by `createdAt` within the selected range — closed-date basis was intended. → Task **C10**.
+
+**S6 (HIGH). KPI queries pass structured `filters` arrays into GET query strings.** `kpi-grid.tsx` calls `opportunitiesService.search({ filters: [{ field: 'status', ... }] })`; the service spreads params into URL query params, so filters serialize as `filters=%5Bobject+Object%5D`. The GET opportunities-search endpoint doesn't accept filter arrays at all — Active Leads / Active Clients / New-Leads-7d KPI counts are unfiltered or rejected. Same pattern feeds the offers KPIs. → folded into tasks **A7/A8**.
+
+**S7 (MEDIUM). Internally inconsistent custom-object keys.** Reports call `objectsService.searchRecords('custom_objects.my_listings', …)` while the wrappers and global search use bare keys (`'my_listings'`, `'properties'`). Whatever the correct key format is, one of these call sites is always broken. A1's `OBJECT_KEYS` constant must be adopted by **all** callers (reports included). → covered by expanded **A1**.
+
+**S8 (MEDIUM). Transactions "Under Contract" detection is a hardcoded heuristic.** `transactions/desktop-view.tsx:53-56` treats stage position ≥ 3 (or name containing "contract"/"firm"/"close") as under-contract. With the real 10-stage Buyer / 9-stage Seller pipelines, position 3 is far too early — the list will include active-search clients. The dashboard "Under Contract" KPI uses the same `pos >= 3` assumption. → Task **C11**.
+
+**S9 (LOW). `next-up` widget passes epoch-millis strings to `eventsByRange` while the calendar feature passes ISO strings** — two callers, two formats, one wrong signature. Confirms the A4 redesign (typed `Date` params).
+
+### 9.4 Shared hooks & UI
+
+**S10 (LOW).** `useOptimisticMutation` (`use-query-helpers.ts`) invokes a caller-supplied `onMutate` but discards its returned context — composing optimistic mutations silently loses rollback data. → Task **D4**.
+
+**S11 (LOW).** `useSurface()` initializes to `'desktop'` and corrects itself in an effect — a one-frame desktop-shell flash on mobile. Initialize from `window.matchMedia(...).matches` in the `useState` initializer. → Task **D4**.
+
+**S12 (LOW).** Settings ▸ Display lacks the claimed **density** control (theme, landing page, and calendar-view selects exist). Minor parity gap. → Task **C12**.
+
+### 9.5 What the deep pass confirmed as sound
+
+- `profiles` update, notification preferences (jsonb `preferences` column via migration 0003), and avatar upload UI flow are correctly wired to Supabase.
+- Auth provider subscription handling, `AuthRoute` inverse guard, notes-feed batching (20 recent contacts → parallel note fetches), team bulk-reassign mutation, notifications read-state in localStorage, and the swipe-row touch handling all check out.
+- The `documents` metadata table RLS is correct (owner-only).

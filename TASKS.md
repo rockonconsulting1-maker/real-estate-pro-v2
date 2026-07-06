@@ -1,6 +1,6 @@
 # TASKS.md — Remediation Plan (Dev Agent Instructions)
 
-**Generated:** 2026-07-06 from the full-repo review (`REVIEW_REPORT.md`).
+**Generated:** 2026-07-06 from the full-repo review; **updated same day** with the deep-pass findings (`REVIEW_REPORT.md` §9).
 **Supersedes:** the original master build checklist (preserved in git history at commit `34078cb`).
 
 **Context:** The app builds and typechecks, but the GHL service layer has wrong API endpoints (custom objects, custom fields/tags, message send, calendar appointments, users), a bootstrap race condition, ~10 features claimed done but missing, 338 lint errors, and repo-hygiene problems. Work the tasks in order — Workstream A and B unblock everything else.
@@ -27,8 +27,8 @@ Definition of Done per task = code change + acceptance criteria met + toolchain 
 1. Change all five methods in `objectsService` from `/custom-objects/...` to `/objects/...`.
 2. Add a constant map at top of file: `export const OBJECT_KEYS = { listings: 'custom_objects.my_listings', properties: 'custom_objects.properties', offers: 'custom_objects.real_estate_offer' } as const;` and use it in the three thin wrappers (`myListingsService`, `mlsPropertiesService`, `offersService`).
 3. In `searchRecords`, rename body field `limit` → `pageLimit` and add `page` support; keep `searchAfter` cursor support. Confirm exact body shape in docs ("Search Object Records").
-4. Grep the codebase for any other caller passing bare keys directly to `objectsService.searchRecords('properties', ...)` (e.g. `src/components/shared/global-search.tsx:69`) and switch them to the wrappers/`OBJECT_KEYS`.
-**Acceptance:** All listings/MLS/offers queries hit `/objects/custom_objects.*` paths; global search compiles against the wrappers; add a unit test asserting the built path/body for `searchRecords`.
+4. Grep the codebase for **every** caller passing keys directly to `objectsService.searchRecords(...)` and switch them to the wrappers/`OBJECT_KEYS`. Known inconsistent call sites: `src/components/shared/global-search.tsx:69` (bare `'properties'`) and `src/features/reports/desktop-view.tsx` + `mobile-view.tsx` (already-prefixed `'custom_objects.my_listings'`) — today these two conventions contradict each other, so one is always broken.
+**Acceptance:** All listings/MLS/offers queries hit `/objects/custom_objects.*` paths; no string-literal object keys remain outside `OBJECT_KEYS`; add a unit test asserting the built path/body for `searchRecords`.
 
 ## A2. Fix custom fields / custom values / tags / medias endpoints
 **File:** `src/lib/ghl/services/misc.ts`
@@ -77,6 +77,16 @@ Definition of Done per task = code change + acceptance criteria met + toolchain 
 **Instructions:** The `search()` spread `{ locationId, ...params }` sends `filters` objects into the query string (`[object Object]`). Whitelist the documented `GET /opportunities/search` params: `q`, `pipeline_id`, `pipeline_stage_id`, `assigned_to`, `contact_id`, `status`, `date`, `limit`, `page`, `location_id` (verify snake_case vs camelCase in docs — the API uses `location_id` style for this endpoint). Map the service's camelCase inputs to the documented param names explicitly. Remove the `filters?: any` param or implement it properly.
 **Acceptance:** built query string contains only documented params; unit test covers mapping.
 
+## A8. Fix dashboard KPI queries (filters arrays are silently discarded)
+**Files:** `src/features/dashboard/widgets/kpi-grid.tsx` (+ mobile dashboard equivalents), `src/features/dashboard/widgets/new-leads.tsx`, `needs-attention.tsx`, `pending-offers.tsx`
+**Problem (REVIEW_REPORT §9 S6):** widgets pass `filters: [{ field: 'status', operator: 'eq', value: 'open' }]`-style arrays to `opportunitiesService.search`, which serializes them into the GET query string as `[object Object]`. Every KPI count (Active Leads, Active Clients, New Leads 7d, Under Contract base query) is unfiltered or rejected.
+**Instructions:**
+1. After A7 lands, rewrite each widget query using the documented params (`status: 'open'`, `pipeline_id`, `date`), not filter arrays.
+2. "New Leads this week": the GET endpoint has no `createdAt >= X` param — either use the `date` param if it supports ranges (verify docs) or fetch page 1 sorted by created date and count client-side with an explicit "approximate" note.
+3. Offers KPIs (`offersService.search({ filters })`) go through the objects **POST** search — verify the documented filter body shape for object records search and use it (or filter client-side on fetched pages, documented as approximation).
+4. "Under Contract" KPI: replace the `pos >= 3` heuristic with the C11 stage-resolution helper.
+**Acceptance:** each KPI issues a request with only documented params and returns a correct count against seeded test data; no `filters` array reaches a GET query string anywhere (add a lint-style unit test on the service).
+
 ---
 
 # WORKSTREAM B — Bootstrap & credentials lifecycle (CRITICAL)
@@ -105,6 +115,12 @@ Definition of Done per task = code change + acceptance criteria met + toolchain 
 **Files:** `src/hooks/use-ghl-credentials.ts`, `.env.example`, `README.md`
 **Instructions:** `.env.example`/README document `VITE_GHL_PIT`/`VITE_GHL_LOCATION_ID` dev fallbacks but nothing reads them. In `useGhlCredentials`, when Supabase has no row **and** `import.meta.env.DEV` and both vars are set, return the env credentials (never in production builds). Otherwise delete the vars from `.env.example` and README.
 **Acceptance:** behavior matches documentation; production build ignores env fallbacks.
+
+## B5. Honor the `?next=` redirect after sign-in
+**Files:** `src/features/auth/sign-in.tsx` (line ~47), optionally `sign-up.tsx`/`confirm.tsx`
+**Problem (REVIEW_REPORT §9 S3):** `ProtectedRoute` redirects to `/auth/sign-in?next=<intended path>`, but sign-in hardcodes `navigate('/')` — the preserved path is dropped.
+**Instructions:** Read `next` via `useSearchParams`; after successful sign-in, `navigate(next, { replace: true })` when `next` is a **same-origin relative path starting with `/`** (reject `//`, absolute URLs, and `/auth/*` to prevent open-redirect/loops); fall back to `/`. Apply the same logic to the post-email-confirm redirect if applicable.
+**Acceptance:** visiting `/offers/123` signed-out → sign-in → lands on `/offers/123`; malicious `?next=https://evil.example` falls back to `/`.
 
 ---
 
@@ -159,6 +175,26 @@ Definition of Done per task = code change + acceptance criteria met + toolchain 
 **Instructions:** Wrap the `messages` derivation in `useMemo` as the lint warning says; verify the scroll-to-bottom effect doesn't refire on every 15s poll unless messages actually changed (compare last message id).
 **Acceptance:** warning gone; no scroll jump on idle polls.
 
+## C10. Reports: paginate the source data and fix date semantics
+**Files:** `src/features/reports/desktop-view.tsx`, `mobile-view.tsx`
+**Problem (REVIEW_REPORT §9 S5):** all analytics (GCI, deal volume, funnel, source attribution, avg DOM) are computed from a single page of 100 opportunities/contacts/listings — silently wrong beyond 100 records. GCI/volume also bucket won deals by `createdAt` instead of close date.
+**Instructions:**
+1. Add a `fetchAllPages(fetchPage, { maxPages: 10 })` helper (respects the rate limiter; stops at cursor end or cap) and use it for the three report sources; surface a "showing first N records" notice if the cap is hit.
+2. Base GCI and deal-volume-by-month on the won date — use `lastStatusChangeAt`/`updatedAt` if the API exposes it (verify field in docs), else document `updatedAt` as the approximation.
+3. Cache the aggregated result under a dedicated query key (`['reports', dateRange]`, staleTime ≥ 5 min).
+**Acceptance:** with >100 seeded records, totals reflect all pages; changing date range re-buckets by close-date basis; page cap notice renders when applicable.
+
+## C11. Resolve "Under Contract" by stage name, not position ≥ 3
+**Files:** `src/lib/pipeline-registry.ts`, `src/features/transactions/desktop-view.tsx` (+ mobile), `src/features/dashboard/widgets/kpi-grid.tsx`
+**Problem (REVIEW_REPORT §9 S8):** transactions and the Under Contract KPI treat stage position ≥ 3 as under-contract; with 10-stage Buyer / 9-stage Seller pipelines that misclassifies active-search clients as transactions.
+**Instructions:** Add `Registry.underContractPosition(pipelineId): number` that finds the first stage whose name matches /under contract|conditional|firm|pending|clos/i and returns its position (fallback: `stages.length - 3`, logged). Replace all `pos >= 3` heuristics with `pos >= underContractPosition(o.pipelineId)`. Unit-test with realistic stage lists.
+**Acceptance:** transactions list contains only at/after-under-contract opportunities for both pipelines; heuristic covered by tests.
+
+## C12. Settings ▸ Display: add the claimed density control (or de-scope)
+**File:** `src/features/settings/components/display-tab.tsx`
+**Instructions:** Theme, default landing page, and calendar-view selects exist; **density** (comfortable/compact) does not. Either implement it (persist in `profiles.preferences`, toggle a `data-density` attribute consumed by row-height/padding tokens) or remove the claim from docs. Implementing is preferred — lists are the core surface of this app.
+**Acceptance:** density switch visibly tightens list/table row heights app-wide and persists across sessions.
+
 ---
 
 # WORKSTREAM D — Code quality, lint, tests
@@ -182,13 +218,20 @@ Definition of Done per task = code change + acceptance criteria met + toolchain 
 **Instructions:** Add `prettier` + config consistent with existing style, `format` script, and run it once repo-wide in a dedicated commit. Alternatively document that formatting is ESLint-only.
 **Acceptance:** `bun run format --check` (or documented decision) passes.
 
+## D4. Shared hook fixes
+**Files:** `src/hooks/use-query-helpers.ts`, `src/hooks/use-surface.ts`
+**Instructions (REVIEW_REPORT §9 S10/S11):**
+1. `useOptimisticMutation`: capture the caller's `onMutate` return value and merge it into the returned context (`return { previousData, ...(callerContext ?? {}) }`) so composed rollback data isn't lost; pass the full context through to the caller's `onError`/`onSettled`.
+2. `useSurface`: initialize state from `window.matchMedia('(min-width: 1024px)').matches` in the `useState` initializer to kill the desktop-flash-on-mobile frame.
+**Acceptance:** unit test proves caller `onMutate` context reaches `onError`; no layout flash on a mobile-width first paint.
+
 ---
 
 # WORKSTREAM E — Security & repo hygiene
 
-## E1. Add `.gitignore` and untrack `.env`
+## E1. Untrack `.env` (`.gitignore` already added)
 **Instructions:**
-1. Create `.gitignore` with at minimum: `node_modules/`, `dist/`, `.env`, `.env.local`, `.env.*.local`, `*.log`, `.DS_Store`, `coverage/`.
+1. ~~Create `.gitignore`~~ — **done** (commit `5efe08d`).
 2. `git rm --cached .env` and commit. Keep `.env.example` (placeholders only — remove the real location ID currently in `.env`; `.env.example` is already blank, good).
 3. Note in README that the previously committed Supabase publishable key is public-by-design but the Supabase project should confirm RLS coverage (it exists) and the GHL location ID should be treated as non-secret-but-private.
 **Acceptance:** `git ls-files | grep .env` returns only `.env.example`; fresh clone builds after copying `.env.example`.
@@ -202,6 +245,21 @@ Definition of Done per task = code change + acceptance criteria met + toolchain 
 **File:** `src/app/router.tsx` (lines ~89–96), `src/pages/DesignPreview.tsx`, `src/pages/GhlSmoke.tsx`
 **Instructions:** Wrap `/design-preview` and `/ghl-smoke` registration in `if (import.meta.env.DEV)` (build the route array conditionally) so they're tree-shaken from production, or delete the pages.
 **Acceptance:** production build contains no chunk for these pages; dev still serves them.
+
+## E4. Lock down the avatars storage bucket (SECURITY)
+**File:** new migration `supabase/migrations/0005_avatars_policies_fix.sql`
+**Problem (REVIEW_REPORT §9 S1):** the 0004 policies allow **anyone** (any role, no ownership check) to upload/update/delete any object in the `avatars` bucket.
+**Instructions:**
+1. Drop the three write policies from 0004 ("Anyone can upload/update/delete...").
+2. Recreate them `to authenticated` with an ownership path convention — store avatars at `{auth.uid()}/avatar.<ext>` and check `(storage.foldername(name))[1] = auth.uid()::text` in `with check` (insert) and `using` (update/delete). Keep public read.
+3. Update `profile-tab.tsx` upload path to match the `{uid}/...` convention if it doesn't already.
+**Acceptance:** authenticated user A cannot write to user B's avatar path (verify with two test users or a SQL policy test); avatar upload/replace still works in the UI.
+
+## E5. Provision the `documents` bucket + storage RLS via migration
+**File:** new migration `supabase/migrations/0006_documents_bucket.sql`
+**Problem (REVIEW_REPORT §9 S2):** the bucket is only mentioned in a "create it in the dashboard" comment — fresh environments have a broken Docs vault and no defined storage-level access control.
+**Instructions:** Insert bucket `documents` (private, `public = false`). Add owner-scoped policies `to authenticated` for select/insert/update/delete where `bucket_id = 'documents' and (storage.foldername(name))[1] = auth.uid()::text` — this matches `storage.ts`, which already writes to `{user_id}/{doc_id}`. Remove the dashboard-instructions comment from 0002.
+**Acceptance:** on a fresh Supabase project with migrations applied, upload → signed-url download → delete round-trips; a second user cannot read the first user's file path.
 
 ---
 
@@ -228,12 +286,12 @@ Definition of Done per task = code change + acceptance criteria met + toolchain 
 
 | Order | Tasks | Why |
 |---|---|---|
-| 1 | E1 | Stop compounding the tracked `.env` on every commit |
-| 2 | A1–A7 | App is non-functional against live GHL until these land |
-| 3 | B1–B3 | First-load correctness + visible failures |
+| 1 | E1, E4, E5 | Untrack `.env`; close the open avatar-bucket policies; make Docs vault provisionable |
+| 2 | A1–A8 | App is non-functional against live GHL until these land (A8 depends on A7) |
+| 3 | B1–B3, B5 | First-load correctness, visible failures, working sign-in redirect |
 | 4 | D2 (partial, alongside A) | Regression-lock every endpoint fix as it lands |
-| 5 | C1–C9 | Feature parity with the original checklist |
-| 6 | D1, D3 | Lint to zero once churn settles |
+| 5 | C1–C12 | Feature parity + correct analytics/transactions classification |
+| 6 | D1, D3, D4 | Lint to zero + shared-hook fixes once churn settles |
 | 7 | B4, E2, E3, F1–F3 | Hygiene + performance + docs |
 
 **Verification gate for release:** `typecheck` ✅ · `lint` ✅ 0 errors · `vitest run` ✅ with real suites · `build` ✅ no chunk > 600 KB · manual smoke of each module against a live GHL sub-account (leads board drag, client detail tabs, listing/offer/MLS lists, send SMS + Email, calendar CRUD, tasks bulk edit, docs upload/download, reports render + CSV, settings save).
