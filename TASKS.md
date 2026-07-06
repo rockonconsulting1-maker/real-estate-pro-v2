@@ -1,462 +1,239 @@
-# Real Estate Pro CRM — Master Build TASKS.md
+# TASKS.md — Remediation Plan (Dev Agent Instructions)
 
-**Goal:** Complete React + TypeScript web app (Desktop & Mobile responsive), LIVE data from a GHL Sub-Account via Private Integration Token (PIT), Supabase for user auth. **NO MOCK DATA in the final app** — the design prototype's `mobile/data.jsx` is a *shape reference only*.
+**Generated:** 2026-07-06 from the full-repo review (`REVIEW_REPORT.md`).
+**Supersedes:** the original master build checklist (preserved in git history at commit `34078cb`).
 
-**Design source of truth (GitHub):** https://github.com/rockonconsulting1-maker/RealEstate-Pro-CRM---Design
-Key reference files: `design.md`, `SCREENS.md`, `frontend-designs.md`, `GHL_Integration_Mapping.md`, `RC CRM Desktop.html`, `RC CRM Mobile.html`, `RC CRM Auth Desktop.html`, `RC CRM Auth Mobile.html`, `/desktop/*.jsx`, `/mobile/*.jsx`, both `styles.css` files, and the GHL schema docs (`SECTION_1`–`SECTION_6`, `GoHighLevel__GHL__API_Integration.txt`).
+**Context:** The app builds and typechecks, but the GHL service layer has wrong API endpoints (custom objects, custom fields/tags, message send, calendar appointments, users), a bootstrap race condition, ~10 features claimed done but missing, 338 lint errors, and repo-hygiene problems. Work the tasks in order — Workstream A and B unblock everything else.
 
----
+## Rules for the Dev Agent (apply to every task)
 
-## Stack (locked)
+1. **Verify endpoints against GHL API 2.0 docs** (https://marketplace.gohighlevel.com/docs/) before changing them; the paths below are from the docs and the original spec, but confirm the `Version` header and body shape per endpoint.
+2. All GHL calls stay inside `src/lib/ghl/services/*` via `ghlFetch` — never `fetch` in components.
+3. After each task: `bun run typecheck && bun run lint && bunx vitest run && bun run build` must pass (lint may still fail globally until D1 lands; do not add *new* errors).
+4. Add/extend a vitest test when a task touches pure logic (services, registry, helpers).
+5. Preserve existing loading/empty/error state patterns (`Skeleton`, `EmptyState`, `ErrorState`).
+6. Commit per task with message `fix(<area>): <task-id> <summary>`.
 
-| Layer | Technology |
-|---|---|
-| Framework | React 18 |
-| Build | Vite |
-| Language | TypeScript (strict) |
-| Routing | React Router DOM v6 |
-| Styling | Tailwind CSS + CSS-variable token system (OKLCH tokens from `design.md`) |
-| UI | shadcn/ui on Radix primitives |
-| Server state | TanStack Query v5 |
-| Local state | React Context + hooks |
-| Forms | React Hook Form + Zod |
-| Icons | lucide-react |
-| Charts | recharts |
-| Dates | date-fns |
-| Auth | Supabase (`https://xdenkkphnhjjpdirvsii.supabase.co`) |
-| Data | GHL API 2.0 (`https://services.leadconnectorhq.com`) via PIT |
-
-## Architecture rules (apply to every task)
-
-- **Responsive, one codebase:** desktop layout ≥1024px (sidebar + topbar + split panes), mobile <1024px (TabBar + FAB + bottom sheets). Shared route tree; per-route `Desktop*`/`Mobile*` view components where layouts diverge; shared hooks/data layer always.
-- **Data layer:** all GHL calls go through `src/lib/ghl/client.ts` + typed service modules in `src/lib/ghl/services/*`. UI components never call `fetch` directly.
-- **Query keys:** centralized in `src/lib/queryKeys.ts`. Pattern: `['ghl', resource, params]`.
-- **Live data only:** every list, detail, KPI, and dropdown reads from GHL (or Supabase for auth/profile). Loading = skeletons matching the design; empty = designed empty states; error = retryable error card.
-- **v1 auth-to-data flow:** GHL PIT + Location ID stored on the authenticated Supabase user (private table with RLS, see Phase 1). Direct browser → GHL calls. (v2 will move to Supabase Edge Function proxy + webhooks — structure the client so only the base transport swaps.)
-- **Custom objects:** `custom_objects.my_listings`, `custom_objects.properties` (MLS), `custom_objects.real_estate_offer`. Relations via Associations API.
-- **Pipelines:** `Lead Nurture Pipeline` (Leads), `Buyer Pipeline` / `Buyer Transaction`, `Seller Pipeline` (Clients). IDs resolved at bootstrap, never hardcoded (except as `.env` fallbacks).
-- **Every task's Definition of Done:** desktop + mobile implemented, wired to live GHL data, loading/empty/error states, TypeScript strict passes, matches `design.md` tokens.
-
-## Performance & caching strategy (build in Phase 1, use everywhere)
-
-1. **Bootstrap prefetch:** on login, one parallel batch fetches pipelines (+stages), custom object schemas, custom field definitions, association keys, calendar list, user list, and dashboard page-1 data — before the shell renders (behind a branded splash).
-2. **Persisted cache:** TanStack Query + `@tanstack/query-persist-client` (localStorage/IndexedDB) so repeat visits render instantly from cache, then revalidate (stale-while-revalidate).
-3. **staleTime tiers:** schema/pipelines/fields = 24h; lists = 60s; detail records = 30s; conversations = 15s + refetchInterval while thread open.
-4. **Route-level prefetch:** prefetch a module's page-1 query on nav-item hover (desktop) / on tab mount (mobile). Prefetch detail record on list-row hover.
-5. **Pagination:** `searchAfter` cursor pagination on custom-object search & contacts; `useInfiniteQuery` with virtualized lists (TanStack Virtual) for large tables.
-6. **Optimistic updates:** stage drags, task toggles, note edits, message send — update cache immediately, rollback on error.
-7. **Denormalized cache seeding:** when a list loads, seed each record's detail query cache so detail pages open instantly.
-8. **Request discipline:** batch parallel requests with `Promise.all`, dedupe via Query, respect GHL rate limits (100 req/10s burst) with a small client-side queue + exponential backoff on 429.
-
-## Legend
-
-`[ ]` open · `[x]` done · **(D)** desktop · **(M)** mobile · **(B)** both surfaces
-Each phase pairs with a prompt in `VIBE_PROMPTS.md` (P0.1, P2.3, etc.).
+Definition of Done per task = code change + acceptance criteria met + toolchain green + committed.
 
 ---
 
-# PHASE 0 — Project Foundation
+# WORKSTREAM A — GHL API corrections (CRITICAL — app is non-functional against live data without these)
 
-## 0.1 Scaffold & tooling → Prompt P0.1
-- [x] Vite + React 18 + TS strict scaffold; path alias `@/`
-- [x] Install/configure: react-router-dom v6, @tanstack/react-query (+devtools, persist-client), tailwindcss, shadcn/ui init, react-hook-form, zod, @hookform/resolvers, lucide-react, recharts, date-fns, @supabase/supabase-js, @tanstack/react-virtual
-- [x] ESLint + Prettier + strict tsconfig; `npm run typecheck`
-- [x] `.env` handling: `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`, optional `VITE_GHL_*` dev fallbacks; `.env.example` committed
-- [x] Folder structure: `src/{app,routes,components/{ui,shared,desktop,mobile},features/<module>,lib/{ghl,supabase},hooks,types,styles}`
+## A1. Fix Custom Objects endpoints and schema keys
+**File:** `src/lib/ghl/services/objects.ts`
+**Problem:** Uses `POST /custom-objects/{key}/records/search` with bare keys (`my_listings`). Real API: `POST /objects/{schemaKey}/records/search` with fully-qualified keys (`custom_objects.my_listings`).
+**Instructions:**
+1. Change all five methods in `objectsService` from `/custom-objects/...` to `/objects/...`.
+2. Add a constant map at top of file: `export const OBJECT_KEYS = { listings: 'custom_objects.my_listings', properties: 'custom_objects.properties', offers: 'custom_objects.real_estate_offer' } as const;` and use it in the three thin wrappers (`myListingsService`, `mlsPropertiesService`, `offersService`).
+3. In `searchRecords`, rename body field `limit` → `pageLimit` and add `page` support; keep `searchAfter` cursor support. Confirm exact body shape in docs ("Search Object Records").
+4. Grep the codebase for any other caller passing bare keys directly to `objectsService.searchRecords('properties', ...)` (e.g. `src/components/shared/global-search.tsx:69`) and switch them to the wrappers/`OBJECT_KEYS`.
+**Acceptance:** All listings/MLS/offers queries hit `/objects/custom_objects.*` paths; global search compiles against the wrappers; add a unit test asserting the built path/body for `searchRecords`.
 
-## 0.2 Design-system port → Prompt P0.2
-- [x] Port OKLCH token set from repo `design.md` + `desktop/styles.css` + `mobile/styles.css` into `src/styles/tokens.css` (CSS variables) and map into Tailwind config (colors, radius, shadows, spacing, typography)
-- [x] Typography scale + tabular numerals for money/time; `Money`, `Countdown`, `Spark`, `Avatar`, `StageDot`, `TempBadge`, `RoleBadge` shared primitives (port from `desktop/shell.jsx`)
-- [x] Semantic vs stage color separation rule (stage colors never fill cards)
-- [x] Dark mode scaffolding (class strategy, token overrides) — P3 design-brief item, wire the toggle in Settings
-- [x] Skeleton, EmptyState, ErrorState, Toast (sonner or shadcn toast) shared components
-- [x] 44×44 touch targets on mobile; focus rings preserved
+## A2. Fix custom fields / custom values / tags / medias endpoints
+**File:** `src/lib/ghl/services/misc.ts`
+**Problem:** `/custom-fields/`, `/custom-values/`, `/tags/`, `/medias/` are not valid GHL endpoints.
+**Instructions:**
+1. `customFieldsService.list` → `GET /locations/{locationId}/customFields` (response key `customFields`). If object-scoped fields are needed for custom objects, also add `getByObjectKey(objectKey)` → `GET /custom-fields/object-key/{objectKey}?locationId=...` (verify in docs).
+2. `customValuesService.list` → `GET /locations/{locationId}/customValues` (response key `customValues`).
+3. `tagsService.list` → `GET /locations/{locationId}/tags` (response key `tags`).
+4. `mediasService.list` → `GET /medias/files` with `query: { locationId, ... }` (verify param name, possibly `altId`/`altType`).
+**Acceptance:** bootstrap fields/tags resolve (no silent rejection); tag-driven filters (temperature, `type:*`) receive real definitions.
 
-## 0.3 Responsive app shell & navigation → Prompt P0.3
-- [x] **(D)** Sidebar: logo, nav groups (Dashboard, Leads, Clients, Contacts, My Listings, Offers, Transactions, MLS Properties, Conversations, Calendar, Tasks, Notes, Docs, Reports, Team, Settings), collapse state, active indicators — port from `desktop/shell.jsx`
-- [x] **(D)** Topbar: global search field, breadcrumbs, Quick Add button, notifications bell + popover, user avatar menu (profile, settings, sign out)
-- [x] **(M)** TabBar: Dashboard, Leads, Clients, Calendar, More (More = sheet with remaining modules) — port pattern from `mobile/app.jsx`
-- [x] **(M)** FAB + FabPicker sheet (Lead, Client, Listing, Offer, Task, Note, Event) — routes to creation sheets
-- [x] **(M)** Safe-area insets, gesture-friendly bottom sheets (vaul or Radix Dialog bottom variant)
-- [x] Route tree with lazy-loaded modules + Suspense skeletons; 404 route; scroll restoration
-- [x] `useSurface()` hook (desktop/mobile breakpoint) + per-route view switcher
-- [x] Global search overlay **(B)**: recent searches, browse-by-type, live results across contacts/leads/clients/listings/offers (wired in Phase 2+, stub now)
+## A3. Fix conversations message send, channel types, and mark-read
+**Files:** `src/lib/ghl/services/conversations.ts`, `src/features/conversations/components/thread-view.tsx`
+**Problem:** Send posts to read-only `POST /conversations/{id}/messages` with numeric `type`; `PUT /conversations/{id}/read` doesn't exist.
+**Instructions:**
+1. `sendMessage` → `POST /conversations/messages` with body per docs: `{ type: 'SMS' | 'Email' | 'WhatsApp' | 'IG' | 'FB' | 'Live_Chat', contactId, message }` for SMS-like channels; for Email include `html` (or `message`), `subject`, and `emailFrom` if required. Signature: `sendMessage(data: SendMessagePayload)` — it no longer needs `conversationId`, it needs `contactId`.
+2. In `thread-view.tsx`, replace numeric channel state (`1/2/4`) with a string union `'SMS' | 'Email' | 'WhatsApp'`; pass `contactId` (already derived at line ~56) into the mutation; keep optimistic bubble logic.
+3. `markRead` → `PUT /conversations/{conversationId}` with `{ unreadCount: 0 }` (verify field name in "Update Conversation" docs).
+4. Add "Log Call" action support (`type: 'Call'` inbound/outbound per docs) — it was claimed in the original 10.2 task.
+**Acceptance:** SMS and Email send succeed against a live sub-account (or, without live creds, payload matches docs and a unit test asserts endpoint+body); mark-read clears unread badge.
 
----
+## A4. Fix calendar appointment endpoints and events query params
+**File:** `src/lib/ghl/services/calendars.ts`
+**Instructions:**
+1. `createAppointment` → `POST /calendars/events/appointments`.
+2. `getAppointment`/`updateAppointment`/`deleteAppointment` → `/calendars/events/appointments/{eventId}` (DELETE may be `/calendars/events/{eventId}` — verify in docs).
+3. `eventsByRange`: `GET /calendars/events` requires `locationId`, `startTime`, `endTime` **in epoch milliseconds**, plus one of `userId` | `calendarId` | `groupId`. Change signature to accept `{ start: Date; end: Date; calendarId?: string; userId?: string }`, convert to millis, and require a calendarId/userId (thread the user's default calendar from `ghl_credentials.default_calendar_id`, falling back to iterating bootstrap calendars).
+4. Update all callers (calendar views, dashboard next-up widget, contact appointments tabs) for the new signature.
+**Acceptance:** calendar week/day/month views and event modals build correct requests; unit test asserts millis conversion and required params.
 
-# PHASE 1 — Auth, Supabase & GHL Integration Layer
+## A5. Fix users list endpoint for sub-account PIT
+**File:** `src/lib/ghl/services/users.ts`
+**Instructions:** Replace `GET /users/search?locationId=...` (requires agency `companyId`) with `GET /users/` + `query: { locationId }`. Keep `get(id)`. Verify response key (`users`).
+**Acceptance:** Team directory and assigned-to dropdowns populate with a location-scoped PIT.
 
-## 1.1 Supabase client & auth pages → Prompt P1.1
-Reference: `RC CRM Auth Desktop.html`, `RC CRM Auth Mobile.html` (6 screens each)
-- [x] `src/lib/supabase/client.ts` singleton
-- [x] **(B)** Sign In: email+password, show/hide toggle, error states, "Welcome back" layout; desktop = left brand panel w/ tagline+features+stage dots, mobile = full-screen
-- [x] **(B)** Create Account: first/last name, email, brokerage, phone, password + live strength meter (Weak/Fair/Strong), confirm, ToS checkbox → `supabase.auth.signUp` with user metadata (first_name, last_name, brokerage, phone)
-- [x] **(B)** Forgot Password: email → `resetPasswordForEmail` with redirect
-- [x] **(B)** Check Your Email: redacted email display, resend link (with cooldown)
-- [x] **(B)** Reset Password: new + confirm w/ strength meter → `updateUser`
-- [x] **(B)** Password Changed: success screen → Sign in CTA
-- [x] Zod schemas for all auth forms; RHF integration; inline field errors
-- [x] Email confirm flow (`token_hash` handling route)
+## A6. Contacts: server-side tag filtering + pagination correctness
+**File:** `src/lib/ghl/services/contacts.ts` (+ callers in `src/features/contacts/*`)
+**Problem:** Tag filter is applied client-side to the current page only — silently drops matches; role filter values in `desktop-view.tsx`/`mobile-view.tsx` (`'Vendor'`, `'SOI'`) don't match the `type:*` tag taxonomy.
+**Instructions:**
+1. Migrate `search()` to `POST /contacts/search` with proper `filters` (tag filter group) and `searchAfter` pagination per docs; remove the client-side tag filter.
+2. Update `ROLE_FILTERS` in both contact views to the real taxonomy (`type:vendor`, `type:soi`, `type:re-agent`, `type:team`, `lifecycle:past-client`, `lifecycle:lead`, `lifecycle:client`) — confirm actual tags used in the sub-account; keep labels human-readable.
+**Acceptance:** filtering by role returns matches beyond page 1; no client-side tag filtering remains.
 
-## 1.2 Session, guards & profile store → Prompt P1.2
-- [x] AuthProvider context: session, user, loading; `onAuthStateChange` subscription
-- [x] `<ProtectedRoute>` wrapper; redirect to /auth/sign-in preserving intended path; auth pages redirect away when signed in
-- [x] Supabase `public.profiles` table (id FK auth.users, first_name, last_name, brokerage, phone, avatar_url) + signup trigger + RLS (owner-only)
-- [x] Supabase `public.ghl_credentials` table (user_id PK/FK, pit_token, location_id, calendar_id default, updated_at) + **RLS owner-only select/insert/update** — SQL migration file committed
-- [x] `useGhlCredentials()` hook: load once post-login, cache in memory (not localStorage), expose `{pit, locationId, isConfigured}`
-- [x] If not configured → route to Settings ▸ Integrations onboarding step
-
-## 1.3 GHL API client & service layer → Prompt P1.3
-Reference: `GoHighLevel__GHL__API_Integration.txt`, `GHL_Integration_Mapping.md`, https://marketplace.gohighlevel.com/docs/Authorization/PrivateIntegrationsToken
-- [x] `ghlFetch` transport: base `https://services.leadconnectorhq.com`, headers `Authorization: Bearer <PIT>`, `Version` header per GHL docs, JSON handling, typed errors (401 → credentials invalid banner, 429 → queued retry w/ backoff, 5xx → retry once)
-- [x] Rate limiter (token bucket) + request dedupe
-- [x] Typed service modules: `contacts.ts`, `opportunities.ts` (+pipelines), `objects.ts` (generic custom-object CRUD + search w/ searchAfter), `associations.ts` (keys + relations), `conversations.ts`, `calendars.ts` (+appointments), `tasks.ts`, `notes.ts`, `users.ts`, `customFields.ts`, `customValues.ts`, `tags.ts`, `locations.ts`, `medias.ts`
-- [x] Zod response schemas per service → inferred TS types in `src/types/ghl.ts`
-- [x] `validateCredentials()` = `GET /locations/{locationId}` smoke test
-
-## 1.4 Query architecture, bootstrap & cache persistence → Prompt P1.4
-- [x] QueryClient config: default staleTime tiers, retry policy, persister (localStorage w/ 24h maxAge, buster on app version)
-- [x] `queryKeys.ts` factory for every resource
-- [x] `useBootstrap()`: parallel-load pipelines+stages, custom object schemas (3), custom field defs, association keys, calendars, location users, tags → stored in long-stale queries; branded splash until resolved
-- [x] `PipelineRegistry` helper: resolve pipeline/stage IDs by name ("Lead Nurture", "Buyer", "Seller"); stage id→label/color maps
-- [x] Hover/route prefetch utilities; list→detail cache seeding helper
-- [x] Optimistic mutation helper (`optimisticUpdate(queryKey, updater)`) with rollback
-- [x] Infinite query + virtualization pattern component (`VirtualizedTable`, `VirtualizedList`)
-
-## 1.5 Settings ▸ Integrations (credentials onboarding) → Prompt P1.5
-- [x] **(B)** Integrations screen: PIT input (password field), Location ID input, "Test connection" (validateCredentials → shows location name on success), Save (upsert ghl_credentials), rotate-token guidance copy, scopes checklist display
-- [x] First-run gate: after sign-in, if `!isConfigured` → guided setup wizard (explain PIT creation steps w/ link to GHL docs)
-- [x] Security note UI: token stored server-side in Supabase, sent only to GHL from this browser session
-
----
-# PHASE 2 — Dashboard
-
-Reference: `desktop/dashboard.jsx`, `mobile/screen-dashboard.jsx`, `GHL_Integration_Mapping.md §2`
-
-## 2.1 Desktop Dashboard → Prompt P2.1
-- [x] 3-column composition: NextAppt hero + timeline | work queue | stats
-- [x] **Next Up / Now ribbon:** next appointment from `GET /calendars/events` (startTime ≥ now, sorted asc): title, time, countdown (`Countdown` primitive), client chip (contact link), location, event-type chip; map placeholder/link
-- [x] **KPI grid:** Active Leads (opportunity search count, Lead Nurture pipeline, status=open), Active Clients (Buyer+Seller pipelines open), Under Contract (stage filter), Pending Offers (`real_estate_offer` search status=submitted/pending), New Leads this week (createdAt ≥ 7d), Closings this month (closing_date within month) — each KPI clickable → routes to filtered module
-- [x] **Needs Attention widget:** overdue tasks (tasks search, dueDate < now, incompleted), stale leads (no activity Xd), offers expiring (irrevocable_until < 48h), appointments unconfirmed today
-- [x] **New Leads list:** latest 5 opportunities in Lead Nurture (name, source, temp badge, age) → lead detail
-- [x] **Pending Offers list:** latest offers w/ price, property address, status chip, countdown to irrevocable
-- [x] **Activity feed:** merged recent notes + task completions + stage changes + messages (parallel queries, merged+sorted client-side) with type filter chips (functional, not visual-only)
-- [x] Loading skeleton matching 3-col layout; per-widget error/empty states
-
-## 2.2 Mobile Dashboard → Prompt P2.2
-- [x] "Now" card (active/next appointment) with countdown + call/text/directions quick actions
-- [x] Horizontal KPI stat scroll (same live KPIs, swipeable)
-- [x] Needs-attention widget, New Leads (top 3), Pending Offers (top 3)
-- [x] Activity feed with functional filter chips; pull-to-refresh
-- [x] Global Search screen (from TopBar search): recent searches (localStorage), browse by type, debounced live search across contacts + opportunities + listings + offers
+## A7. Opportunities search params hygiene
+**File:** `src/lib/ghl/services/opportunities.ts`
+**Instructions:** The `search()` spread `{ locationId, ...params }` sends `filters` objects into the query string (`[object Object]`). Whitelist the documented `GET /opportunities/search` params: `q`, `pipeline_id`, `pipeline_stage_id`, `assigned_to`, `contact_id`, `status`, `date`, `limit`, `page`, `location_id` (verify snake_case vs camelCase in docs — the API uses `location_id` style for this endpoint). Map the service's camelCase inputs to the documented param names explicitly. Remove the `filters?: any` param or implement it properly.
+**Acceptance:** built query string contains only documented params; unit test covers mapping.
 
 ---
 
-# PHASE 3 — Leads (Buyers & Sellers)
+# WORKSTREAM B — Bootstrap & credentials lifecycle (CRITICAL)
 
-Reference: `desktop/leads.jsx`, `mobile/screen-leads.jsx`, `mobile/screen-lead-detail.jsx`, `GHL_Integration_Mapping.md §4–5`
-Data: `POST /opportunities/search` (pipelineId = Lead Nurture) + contact custom fields.
+## B1. Fix bootstrap race (credentials set after bootstrap fires)
+**Files:** `src/app/layout.tsx`, `src/hooks/use-ghl-credentials.ts`, `src/hooks/use-bootstrap.ts`, `src/lib/ghl/client.ts`
+**Problem:** `useBootstrap` is enabled the same render credentials arrive, but `setGhlCredentials` runs in a later effect → first bootstrap runs with null PIT, `allSettled` swallows the failures, and empty results are cached for 24h (empty `PipelineRegistry`, blank app).
+**Instructions:**
+1. Move credential injection into the data path: in `useGhlCredentials`'s `queryFn`, call `setGhlCredentials(data.pit_token, data.location_id)` before returning (and `setGhlCredentials(null, null)` when no row). Keep the layout effect as a safety net or remove it.
+2. In `useBootstrap`, gate on module-level credentials too: `enabled: isConfigured && !!getGhlCredentials().pit`.
+3. Make bootstrap failure loud: if **all** six sub-fetches reject, throw so the query errors (splash can show retry); keep `isPartial` for partial failures.
+4. On sign-out (`auth-provider`), call `setGhlCredentials(null, null)` and `queryClient.clear()`.
+**Acceptance:** cold sign-in on a fresh profile never fires GHL calls without a PIT; a manual test (mock `getGhlCredentials`) proves ordering; full-failure bootstrap shows an error/retry instead of an empty app.
 
-## 3.1 Leads list & board (Desktop) → Prompt P3.1
-- [x] **List view:** sortable table (Name, Role, Stage dot, Temperature, Budget/Target, Source, Last Contact, Age, Value); column sort client-side on loaded pages; sticky header; row hover prefetches detail
-- [x] **Filter chips row:** All / Buyers / Sellers (contact.type custom field), Hot/Warm/Cold (tags `temperature:*`), Source dropdown, Assigned-to dropdown (location users), stage multi-select
-- [x] **Search:** debounced `q` on opportunities search
-- [x] **Kanban board view:** columns = live Lead Nurture stages (from PipelineRegistry), cards (name, role avatar, temp, budget, age), horizontal scroll, **drag-and-drop → `PUT /opportunities/{id}` pipelineStageId with optimistic move**
-- [x] View toggle (List/Board) persisted per user (localStorage)
-- [x] Master-detail split pane: row click opens detail pane right; deep-link `/leads/:id`
+## B2. Surface `isPartial` bootstrap state
+**Files:** `src/app/layout.tsx`, `src/hooks/use-bootstrap.ts`
+**Instructions:** When `data.isPartial` is true, render a dismissible warning banner in the shell ("Some workspace data failed to load — Retry") that calls `refetch()`. List which groups failed (extend the hook to return `failed: string[]`).
+**Acceptance:** killing one endpoint (e.g. wrong tags path pre-A2) yields a visible banner with working retry, not a silent empty state.
 
-## 3.2 Leads (Mobile) → Prompt P3.2
-- [x] List: FilterChipRow (same filters), SwipeRow cards — swipe right = Done (opportunity status won), swipe left = Reschedule (opens task/event sheet) / Delete (confirm → DELETE /opportunities/{id})
-- [x] Vertical collapsible Kanban stack (lane header: stage dot, count, total value tabular)
-- [x] Segmented List/Board toggle; pull-to-refresh; infinite scroll
+## B3. Improve 401 handling (no hard redirect)
+**Files:** `src/lib/ghl/client.ts`, `src/app/layout.tsx`
+**Instructions:** Replace `window.location.href = '/settings/integrations'` with: sonner toast ("GHL credentials invalid — update in Settings ▸ Integrations" with action button) + `react-router` `navigate()` only when the user confirms, and debounce the event so N parallel 401s produce one toast. Remove the unused `toast` import in `client.ts` or use it here.
+**Acceptance:** a 401 shows one toast, no full page reload, in-progress SPA state preserved.
 
-## 3.3 Lead Detail (B) → Prompt P3.3
-- [x] Header: avatar, name, role badge, temp badge, stage selector (inline stage move), last contact, quick actions Call/Text/Email/Note
-- [x] **Buyer variant tabs:** Buyer Info (budget, pre-approval lender/status, must-haves, deal-breakers, timeline — editable custom fields w/ inline save `PUT /contacts/{id}`), Properties (associated MLS records + interest level), Appointments, Tasks, Notes, Activity, Files
-- [x] **Seller variant tabs:** Seller Info (motivation, target price, urgency, competing agents, property address), Property, Comparables, Tasks, Notes, Activity
-- [x] Tasks tab: CRUD `GET/POST/PUT/DELETE /contacts/{id}/tasks`, complete toggle optimistic
-- [x] Notes tab: CRUD `/contacts/{id}/notes`
-- [x] Appointments tab: `GET /contacts/{id}/appointments` + New Event modal
-- [x] Activity: merged notes/tasks/messages/stage-history timeline
-- [x] Editable contact core fields (phone, email, source, assignedTo, tags) with RHF+Zod inline forms
-
-## 3.4 Lead modals & conversion (B) → Prompt P3.4
-- [x] New Lead modal/sheet: Name, Role (buyer/seller/investor), Phone, Email, Budget, Source, Temperature → creates Contact (`POST /contacts/`) + Opportunity in Lead Nurture (`POST /opportunities/`) + tags
-- [x] **Convert Lead flow:** choose Buyer or Seller pipeline + starting stage + monetary value → `PUT /opportunities/{id}` (move pipelines) or create new opportunity in target pipeline; apply lifecycle tags; success routes to Client Detail
-- [x] Delete/archive lead w/ confirm
+## B4. Implement documented `VITE_GHL_*` dev fallbacks (or remove them)
+**Files:** `src/hooks/use-ghl-credentials.ts`, `.env.example`, `README.md`
+**Instructions:** `.env.example`/README document `VITE_GHL_PIT`/`VITE_GHL_LOCATION_ID` dev fallbacks but nothing reads them. In `useGhlCredentials`, when Supabase has no row **and** `import.meta.env.DEV` and both vars are set, return the env credentials (never in production builds). Otherwise delete the vars from `.env.example` and README.
+**Acceptance:** behavior matches documentation; production build ignores env fallbacks.
 
 ---
 
-# PHASE 4 — Clients (Buyers & Sellers — NO RENTALS)
+# WORKSTREAM C — Features claimed done but missing (restore parity with original checklist)
 
-Reference: `desktop/screens.jsx`, `desktop/screens3.jsx`, `desktop/screens4.jsx`, `mobile/screen-clients.jsx`, `screen-client-detail*.jsx`, `GHL_Integration_Mapping.md §6–7`, `Buyer-Seller-Journeys.md`
+## C1. Contacts directory polish (original Phase 5.1 — was honestly unchecked)
+**Files:** `src/features/contacts/desktop-view.tsx`, `mobile-view.tsx`
+**Instructions:** Add alpha-group section headers in the sorted-by-name list and a right-edge A–Z index scrubber on mobile (tap/drag scrolls the virtualized list via `scrollToIndex`). Keep quick call/text buttons per row on mobile (verify they exist; add `tel:`/`sms:` links if not).
+**Acceptance:** name-sorted list shows letter groups; scrubber jumps correctly; 44px touch targets.
 
-## 4.1 Clients pipeline views (B) → Prompt P4.1
-- [x] Buyer/Seller pipeline segmented switcher (two distinct stage sets — never merged)
-- [x] **(D)** Kanban: live stages as lanes; cards show name, stage, value, DOM (associated listing), status tag (Firm/Under Contract via opportunity tags); drag = stage update optimistic
-- [x] **(D)** List view: Name, Stage, Status tag, Value, DOM, Next milestone, Closing date; sortable; filters (stage, status tag, assigned)
-- [x] **(M)** Vertical Kanban w/ collapsible lanes; summary meta line ("11 active · $13.8M" = live aggregate)
-- [x] Header aggregates: active count + total pipeline value per pipeline (live)
+## C2. Conversations composer: attachments + templates
+**Files:** `src/features/conversations/components/thread-view.tsx`, `src/lib/ghl/services/misc.ts` (medias), new `src/lib/ghl/services/templates.ts` if needed
+**Instructions:**
+1. Attachments: file picker → upload via medias API (`POST /medias/upload-file`, multipart — note `ghlFetch` JSON-encodes bodies; add a `rawBody` option or a dedicated upload helper) → include returned URL(s) in send payload `attachments: string[]`.
+2. Templates: load SMS/Email templates (`GET /locations/{locationId}/templates` — verify endpoint) into a dropdown; inserting a template merges custom values via `customValuesService`.
+**Acceptance:** send with an attachment succeeds (payload verified against docs); templates dropdown inserts body text.
 
-## 4.2 Client Detail — Buyer (B) → Prompt P4.2
-- [x] Pipeline step-dot progress (live stage position); metric grid: Budget, Pre-Approval, Active Offer (associated offer where status=submitted), Target close
-- [x] Tabs: Overview (contact + buyer custom fields, editable) · Properties (saved/viewed associated MLS records, interest level) · Offers (associated `real_estate_offer` records → offer detail) · Appointments · Conversations (thread embed) · Tasks · Notes · Activity · Documents
-- [x] Sticky action bar (M): Call · Text · Note · Appt
-- [x] Stage advance control w/ confirm (maps to Buyer journey stages)
+## C3. Desktop calendar drag-to-reschedule
+**File:** `src/features/calendar/desktop-view.tsx`
+**Instructions:** On the week/day time grid, make event blocks draggable vertically/horizontally (reuse `@dnd-kit/core`); on drop, compute new start/end, optimistic cache update, `calendarsService.updateAppointment` (post-A4 path), rollback + toast on error. Keep the existing mobile sheet-based reschedule.
+**Acceptance:** dragging an event updates its time optimistically and persists; failed update rolls back.
 
-## 4.3 Client Detail — Seller (B) → Prompt P4.3
-- [x] Header: list price, current high offer (max over associated offers), DOM (from associated my_listings record)
-- [x] Six-stage seller progress; Offers tab = comparison table **sorted by net proceeds** (price − conditions cost heuristic) with accept/counter/decline actions
-- [x] Tabs: Overview · Listing (associated my_listings record, editable) · Offers · Showings (calendar events filtered by property) · Marketing (views/saves stats fields) · Tasks · Notes · Activity · Documents
+## C4. Tasks desktop bulk-edit + mini-calendar scheduler
+**File:** `src/features/tasks/desktop-view.tsx` (+ `task-modals.tsx`)
+**Instructions:**
+1. Add a table-view toggle with row checkboxes; selection toolbar: Complete, Reschedule (date picker applies to all), Delete (confirm dialog). Batch via `Promise.allSettled` over `tasksGlobalService.update/delete`, one summary toast.
+2. Add the "today mini-calendar scheduler" panel: unscheduled/today tasks draggable onto hour slots → sets `dueDate`.
+**Acceptance:** multi-select bulk actions work with optimistic updates; drag onto a slot sets the due time.
 
-## 4.4 Client Detail — Both (dual buyer+seller) (B) → Prompt P4.4
-- [x] Detect same contact with open opportunities in both pipelines
-- [x] **(D)** side-by-side dual-opportunity layout; **(M)** Buy/Sell segmented tabs
-- [x] Linked timeline: combined activity across both opportunities; cross-links between the sell listing and buy search
+## C5. Kanban drag-and-drop accessibility (ARIA)
+**Files:** `src/features/leads/components/kanban-board.tsx`, `src/features/clients/components/kanban-board.tsx`, `src/features/listings/*` board if present
+**Instructions:** Use dnd-kit's accessibility props: `announcements` for screen readers, `aria-roledescription="sortable"` on cards, `role="list"`/`aria-label` per lane, keyboard sensor (`KeyboardSensor`) so cards can be moved with arrow keys.
+**Acceptance:** axe/devtools shows labeled lanes/cards; keyboard-only stage move works.
 
-## 4.5 Client modals (B) → Prompt P4.5
-- [x] New Client sheet/modal: Name, Type (buyer/seller), Stage, Phone, Email, Budget/Pre-approval (buyer) or Property/Price (seller) → Contact + Opportunity + custom fields + tags
-- [x] Edit stage / close (won/lost/abandoned) actions → `PUT /opportunities/{id}/status`
+## C6. Route/row hover prefetch
+**Files:** `src/components/desktop/shell.tsx` (nav items), list views (`leads`, `clients`, `contacts`), `src/hooks/use-query-helpers.ts`
+**Instructions:** Implement the claimed prefetch: on desktop nav-item `onMouseEnter`, `queryClient.prefetchQuery` the module's page-1 list; on list-row hover, prefetch the detail query (helpers already exist — wire them). Also seed detail caches from list results (`setQueryData` per record) in the main list hooks.
+**Acceptance:** hovering a nav item fires the page-1 fetch (visible in devtools); opening a hovered row renders instantly from cache.
 
----
+## C7. Bootstrap custom-object schemas
+**Files:** `src/hooks/use-bootstrap.ts`, `src/lib/ghl/services/objects.ts`
+**Instructions:** Add `getSchema(objectKey)` → `GET /objects/{key}` (verify path) and fetch the 3 schemas in the bootstrap parallel batch (`ghl.schemas()` key, 24h stale). Expose via bootstrap result for field editors.
+**Acceptance:** bootstrap loads 3 schemas; listing/offer field editors can read field definitions.
 
-# PHASE 5 — Contacts (Vendors, SOI, RE Agents, Team Members…)
+## C8. Account deletion flow (or de-scope honestly)
+**Files:** `src/features/settings/components/data-tab.tsx`, `supabase/` (new edge function)
+**Instructions:** Preferred: add a Supabase Edge Function `delete-account` (service-role `auth.admin.deleteUser`, verifies JWT of caller, cascades via existing FKs), call it from the confirm dialog, then sign out. If edge functions are out of scope for v1, replace the fake flow with honest UI copy and remove the claim.
+**Acceptance:** either a working delete (user removed, rows cascaded, signed out) or truthful UI + doc note.
 
-Reference: `desktop/contacts.jsx`, `mobile/screen-contacts.jsx`, `GHL_Integration_Mapping.md §11`
-
-## 5.1 Contacts directory (B) → Prompt P5.1
-- [ ] **(D)** Split pane: searchable directory left (alpha groups, virtualized), detail right
-- [ ] **(M)** Directory list w/ quick call/text buttons per row; alpha index scrubber
-- [ ] Data: `GET /contacts/` w/ pagination; search via query param; filter chips by role tags (All / Vendors / SOI / RE Agents / Team / Past Clients / Leads / Clients — tag taxonomy `type:*`, `lifecycle:*`)
-- [ ] Sort: name, recent activity, date added
-
-## 5.2 Contact detail (B) → Prompt P5.2
-- [x] Header: avatar, name, role tags (editable tag picker → `POST/DELETE contact tags`), source
-- [x] Sections/tabs: Info (phone, email, address, DND flags — editable), Vendor variant (Service Type / Priority / Last Used / Preferred Comm custom fields), Tasks, Notes, Conversations link, Activity, Related (associated opportunities/listings/offers via relations)
-- [x] Quick actions: Call, Text (→ Conversations composer), Email, Add note, Add task
-
-## 5.3 Contact modals (B) → Prompt P5.3
-- [x] New Contact modal/sheet: name, phone, email, role tag(s), source, address
-- [x] Merge-duplicate helper (GHL duplicate search on email/phone before create; warn + open existing)
-- [x] Delete contact w/ confirm
+## C9. Fix `react-hooks/exhaustive-deps` churn in thread view
+**File:** `src/features/conversations/components/thread-view.tsx` (line ~47)
+**Instructions:** Wrap the `messages` derivation in `useMemo` as the lint warning says; verify the scroll-to-bottom effect doesn't refire on every 15s poll unless messages actually changed (compare last message id).
+**Acceptance:** warning gone; no scroll jump on idle polls.
 
 ---
 
-# PHASE 6 — My Listings (Agent inventory)
+# WORKSTREAM D — Code quality, lint, tests
 
-Reference: `desktop/screens.jsx` (My Listings), `mobile/screen-props-offers.jsx`, `GHL_Integration_Mapping.md §8`
-Data: `POST /objects/custom_objects.my_listings/records/search`
+## D1. Eliminate the 338 lint errors (typed service layer)
+**Files:** `src/lib/ghl/**`, `src/lib/queryKeys.ts`, `src/types/ghl.ts`, feature files listed by `bun run lint`
+**Instructions:**
+1. Replace `ghlFetch<any>` with typed response interfaces inferred from the existing Zod schemas in `src/types/ghl.ts` (add missing schemas: association key/relation, custom field, tag, media file, meta/pagination).
+2. `queryKeys.ts`: type `params` as `Record<string, unknown> | undefined` or specific param interfaces.
+3. For genuinely dynamic GHL payloads use `unknown` + Zod parse, not `any`.
+4. Fix the 4 warnings (3 fast-refresh mixed exports → move constants to separate files; 1 exhaustive-deps → C9).
+5. `src/pages/GhlSmoke.tsx`: type it or delete it (see E3).
+**Acceptance:** `bun run lint` exits 0. Do this incrementally per directory; don't blanket-disable rules.
 
-## 6.1 Listings inventory (B) → Prompt P6.1
-- [x] **(D)** Card grid + table toggle: photo, address, MLS#, price (Money), stage chip (listing_stage), beds/baths/sqft, DOM, views
-- [x] **(M)** Card list w/ stage tracking strip
-- [x] Filters: stage (Coming Soon/Active/Pending/Sold…), price range, beds/baths min, property type; sort: price, DOM, newest
-- [x] Stage board view (optional lane view by listing_stage) with drag → record update
+## D2. Real test coverage for the fixed integration layer
+**Files:** new tests under `src/lib/ghl/__tests__/`, `src/lib/__tests__/`
+**Instructions:** Add vitest suites (mock `fetch`): (a) `ghlFetch` — auth header, Version header, 429 retry w/ Retry-After, 401 event, dedupe; (b) each service's endpoint path + body for the corrected endpoints (regression-lock A1–A7); (c) `PipelineRegistry` name matching (note: `byName('buyer')` matcher list, ensure "Buyer Pipeline"/"Buyer Transaction" both resolve and "Lead" doesn't falsely match "Seller lead" etc.); (d) contacts/opportunities param mapping. Delete `src/test/example.test.ts`.
+**Acceptance:** ≥ 20 meaningful assertions; suite green in CI-mode (`vitest run`).
 
-## 6.2 Listing detail (B) → Prompt P6.2
-- [x] Hero image carousel (image_urls), price, status, specs grid, public remarks
-- [x] Tabs: Overview · Offers (associated offers, sorted net) · Showings (calendar events matched to property) · Marketing (views/saves, price-history) · Documents (documents_ref) · Notes/Tasks · Seller (associated contact/opportunity link)
-- [x] Inline edit of listing fields → `PUT /objects/custom_objects.my_listings/records/{id}`
-
-## 6.3 Listing modals (B) → Prompt P6.3
-- [x] New Listing sheet/modal: address, MLS#, list price, stage, beds, baths, sqft, type, seller contact link (creates association `listing_to_contact`)
-- [x] Change-stage action; price-change action (records old price in history field)
-
----
-
-# PHASE 7 — Offers
-
-Reference: `desktop/screens.jsx` (Offers), `mobile/screen-props-offers.jsx`, `GHL_Integration_Mapping.md §10`, `SECTION_5` offer record shape
-Data: `POST /objects/custom_objects.real_estate_offer/records/search` + associations (offer_to_property, offer_to_contact)
-
-## 7.1 Offers table/list (B) → Prompt P7.1
-- [x] **(D)** Table: Offer ID, Property address, Buyer/Seller, Offer price, Deposit, Status chip (Pending/Accepted/Declined/Countered), Irrevocable countdown, Closing date, Conditions deadline
-- [x] **(M)** Offer cards w/ status + countdown
-- [x] Filters: status, offer_type (buyer_offer/received), date range, property; sort: price, irrevocable, closing date
-- [x] Urgency highlighting: irrevocable_until < 24h
-
-## 7.2 Offer detail (B) → Prompt P7.2
-- [x] Terms panel: purchase price, deposit, financing type, possession/closing dates, conditions + conditions_deadline, commission
-- [x] Negotiation history timeline (counter chain — linked offer records or history field)
-- [x] Associated records: property card, buyer contact, seller contact (via relations)
-- [x] Actions: Accept / Decline / Counter (Counter opens pre-filled New Offer modal linked to parent) → status updates via `PUT` record
-- [x] Condition checklist w/ toggle + deadline countdowns
-
-## 7.3 Offer modals (B) → Prompt P7.3
-- [x] New Offer sheet/modal: property picker (search my_listings + properties), buyer contact picker, price, deposit, financing type, dates, conditions multi-select → create record + create relations (offer_to_property, offer_to_contact)
-- [x] Edit offer; withdraw offer
+## D3. Add Prettier (claimed in original 0.1) or drop the claim
+**Instructions:** Add `prettier` + config consistent with existing style, `format` script, and run it once repo-wide in a dedicated commit. Alternatively document that formatting is ESLint-only.
+**Acceptance:** `bun run format --check` (or documented decision) passes.
 
 ---
 
-# PHASE 8 — Transactions
+# WORKSTREAM E — Security & repo hygiene
 
-(Deals under contract → closed; derived surface over Opportunities in later stages + associated offers/listings.)
+## E1. Add `.gitignore` and untrack `.env`
+**Instructions:**
+1. Create `.gitignore` with at minimum: `node_modules/`, `dist/`, `.env`, `.env.local`, `.env.*.local`, `*.log`, `.DS_Store`, `coverage/`.
+2. `git rm --cached .env` and commit. Keep `.env.example` (placeholders only — remove the real location ID currently in `.env`; `.env.example` is already blank, good).
+3. Note in README that the previously committed Supabase publishable key is public-by-design but the Supabase project should confirm RLS coverage (it exists) and the GHL location ID should be treated as non-secret-but-private.
+**Acceptance:** `git ls-files | grep .env` returns only `.env.example`; fresh clone builds after copying `.env.example`.
 
-## 8.1 Transactions list (B) → Prompt P8.1
-- [x] Data: opportunities in Buyer+Seller pipelines at/after "Under Contract" stage (PipelineRegistry stage-position filter)
-- [x] Table/cards: client, side (Buy/Sell), property, contract price (accepted offer), key dates (conditions deadline, closing, possession), status (Conditional/Firm via tags), commission
-- [x] Filters: side, month of closing, status; sort by closing date (default asc)
-- [x] Closing-this-week / conditions-due widgets
+## E2. Offline banner vs mobile tab bar
+**File:** `src/app/layout.tsx`
+**Instructions:** The fixed bottom offline banner (`z-[100]`) covers the mobile TabBar/FAB. Position it above the tab bar on mobile (respect safe-area inset + tab bar height) or render as a top banner.
+**Acceptance:** with offline simulated, tab bar remains tappable on mobile viewport.
 
-## 8.2 Transaction detail (B) → Prompt P8.2
-- [x] Milestone tracker (stage-mapped): Under Contract → Conditions → Firm → Clear to Close → Closed
-- [x] Critical dates panel w/ countdowns; parties panel (client, co-op agent, lawyer, lender — associated contacts)
-- [x] Tabs: Overview · Conditions checklist · Documents · Tasks · Notes · Activity
-- [x] Commission calculator card (sale price, rate, splits → net) — S3 suggested screen, include here
-
----
-
-# PHASE 9 — Properties (MLS)
-
-Reference: `desktop/mls.jsx`, `mobile/screen-mls.jsx`, `GHL_Integration_Mapping.md §8–9`
-Data: `POST /objects/custom_objects.properties/records/search`
-
-## 9.1 MLS search (B) → Prompt P9.1
-- [x] **(D)** Advanced filter bar: city, price min/max, beds+, baths+, property type, status; results grid/table toggle; saved-search chips
-- [x] **(M)** Touch-optimized filter sheet + card feed, infinite scroll
-- [x] Debounced text search; cursor pagination (searchAfter); result count
-- [x] Sort: price asc/desc, newest, DOM
-
-## 9.2 Property detail (B) → Prompt P9.2
-- [x] Image carousel, price, status, specs, public remarks
-- [x] Sections: Offers (associated), Showings (calendar events filter), Documents, Interested buyers (associated contacts)
-- [x] Actions: Link to buyer client (create relation w/ interest level), Draft Offer (pre-filled New Offer), Add showing (New Event pre-filled)
+## E3. Remove or gate debug routes
+**File:** `src/app/router.tsx` (lines ~89–96), `src/pages/DesignPreview.tsx`, `src/pages/GhlSmoke.tsx`
+**Instructions:** Wrap `/design-preview` and `/ghl-smoke` registration in `if (import.meta.env.DEV)` (build the route array conditionally) so they're tree-shaken from production, or delete the pages.
+**Acceptance:** production build contains no chunk for these pages; dev still serves them.
 
 ---
 
-# PHASE 10 — Conversations (Email, SMS, Messenger, WhatsApp, Webchat)
+# WORKSTREAM F — Performance & polish
 
-Reference: `desktop/conversations.jsx`, `mobile/screen-conversations.jsx`, `GHL_Integration_Mapping.md §12`
+## F1. Split the 1.37 MB main chunk
+**File:** `vite.config.ts`
+**Instructions:** Add `build.rollupOptions.output.manualChunks` separating at least: `recharts` (only reports/dashboard use it — additionally lazy-import the chart components), `@supabase/supabase-js`, `react-dom`+router, radix primitives. Target: no chunk > 600 KB minified.
+**Acceptance:** build output shows main chunk < 600 KB min; reports still render.
 
-## 10.1 Inbox (B) → Prompt P10.1
-- [x] Thread list: `GET /conversations/` — contact name/avatar, channel icon (sms/email/fb/whatsapp/webchat), lastMessageBody preview, time, unread badge; sorted by lastMessageDate
-- [x] Filters: channel chips, Unread toggle, Starred, search by contact
-- [x] **(D)** split-pane inbox | thread; **(M)** list → full-screen thread
-- [x] Unread polling (refetchInterval 15s while mounted); mark-read on open
+## F2. Real splash progress (optional, small)
+**File:** `src/app/layout.tsx`
+**Instructions:** Drive `Progress` from actual settled count of the 6 bootstrap fetches (expose `settledCount` from `use-bootstrap` via `Promise.allSettled` progress wrapper) instead of a fake interval.
+**Acceptance:** progress reflects real load; completes at 100% when bootstrap settles.
 
-## 10.2 Thread view (B) → Prompt P10.2
-- [x] `GET /conversations/{id}/messages` — bubbles by direction, channel-specific rendering (email subject block, call logs, review, group SMS per mobile design), day dividers, delivery status
-- [x] Composer: channel switcher (SMS/Email/WhatsApp where available), text area, attachments (medias upload), templates dropdown (custom values merge)
-- [x] Send: `POST /conversations/messages` typed per channel; optimistic bubble + status; Log Call action (type: call)
-- [x] Contact context header → links to lead/client/contact detail
-
----
-
-# PHASE 11 — Calendar
-
-Reference: `desktop/screens.jsx` + `screens2.jsx`, `mobile/screen-calendar-full.jsx`, `screen-cal-tasks.jsx`, `GHL_Integration_Mapping.md §13`
-
-## 11.1 Calendar views (B) → Prompt P11.1
-- [x] Data: `GET /calendars/events` by range (fetch per visible range, cache by range key); appointment status colors (confirmed/showed/noshow); event-type chips via tags (Showing/Consult/Inspect/Offer/Call)
-- [x] **(D)** Week (time grid), Day, Month, Agenda views; now-line; click event → Event Detail modal
-- [x] **(M)** Day / Week / Month grids + Agenda-first view; horizontal day swipe
-- [x] Conflict detection banner (overlapping events → banner + one-click Reschedule) — design.md §11.10
-- [x] Date navigation (today, prev/next, mini month picker)
-
-## 11.2 Event modals (B) → Prompt P11.2
-- [x] Event Detail modal/sheet: kind chip, time, duration, client link, property link, location, notes; Edit + Add note + status actions (confirm/showed/noshow → `PUT /calendars/events/appointments/{id}`)
-- [x] New Event: type (showing/consult/inspect/offer/call), title, date, time, duration, client picker, property picker (conditional on type), calendar select → `POST /calendars/events/appointments`
-- [x] Reschedule flow (drag on desktop week grid = time update optimistic; sheet on mobile)
+## F3. Reconcile documentation
+**Files:** `README.md`, `AGENTS.md`
+**Instructions:** After A–E land: update README scopes list if endpoints changed scope needs (e.g. `locations/customFields.readonly`, `medias.readonly/write`, `templates.readonly` for C2), document the dev fallback behavior from B4, document the `documents` upload-progress limitation, and remove/update claims that no longer hold.
+**Acceptance:** README instructions produce a working setup on a clean machine.
 
 ---
 
-# PHASE 12 — Tasks
+## Suggested execution order
 
-Reference: `desktop/screens.jsx`, `mobile/screen-cal-tasks.jsx`, `screen-tasks-notes.jsx`, `GHL_Integration_Mapping.md §14`
+| Order | Tasks | Why |
+|---|---|---|
+| 1 | E1 | Stop compounding the tracked `.env` on every commit |
+| 2 | A1–A7 | App is non-functional against live GHL until these land |
+| 3 | B1–B3 | First-load correctness + visible failures |
+| 4 | D2 (partial, alongside A) | Regression-lock every endpoint fix as it lands |
+| 5 | C1–C9 | Feature parity with the original checklist |
+| 6 | D1, D3 | Lint to zero once churn settles |
+| 7 | B4, E2, E3, F1–F3 | Hygiene + performance + docs |
 
-## 12.1 Tasks views (B) → Prompt P12.1
-- [x] Data: `POST /locations/{locationId}/tasks/search` (all) + per-contact CRUD endpoints
-- [x] Today + Overdue grouped list (M design); All / Today / Overdue / Upcoming / Completed filter chips
-- [x] Group-by: Property, Client, Tag (from mobile screen-tasks-notes) — client-side grouping
-- [x] **(D)** Bulk-edit table view toggle (multi-select → complete/reschedule/delete) + today's mini-calendar scheduler (drag unscheduled tasks onto slots) — design.md §11.11
-- [x] Complete toggle optimistic everywhere; priority badge via `priority:*` tag
-- [x] Sort: due date, priority, created
-
-## 12.2 Task modals (B) → Prompt P12.2
-- [x] New Task: title, due (quick picks Today/Tomorrow/Next week + custom), body, client/lead picker, property link, priority, assignee
-- [x] Task Detail/Edit: editable title, complete toggle, due, priority, client, property, notes, delete (confirm)
-
----
-
-# PHASE 13 — Notes
-
-## 13.1 Notes feed & groups (B) → Prompt P13.1
-- [x] Global feed: aggregate recent notes across recently-active contacts (batched `GET /contacts/{id}/notes`), newest first; author, linked record chip, tags
-- [x] Group-by: Client, Property, Tag; search within notes (client-side over loaded)
-- [x] **(M)** Quick Note minimal sheet (body + linked-to)
-
-## 13.2 Note modals (B) → Prompt P13.2
-- [x] New Note: body, client/lead picker, tags → `POST /contacts/{id}/notes`
-- [x] Note Detail/Edit: editable body, linked-to selector, tags, delete
-
----
-
-# PHASE 14 — Docs (Document Vault)
-
-Reference: `mobile/screen-documents.jsx` (stub → full build, Screen Inventory S1), `Buyer-Seller-Journeys.md §2`
-
-## 14.1 Vault (B) → Prompt P14.1
-- [x] Storage: Supabase Storage bucket `documents` (RLS: owner) + metadata table `documents` (id, user_id, name, category, linked_record_type, linked_record_id, ghl_contact_id, size, mime, created_at); GHL record field `documents_ref` stores UUIDs
-- [x] Category folders: Listing Agreements · Offer Docs · Inspection Reports · Client Files · MLS Sheets (+ journey doc types from Buyer-Seller-Journeys §2.2 as tag taxonomy)
-- [x] Upload (drag-drop D / picker M), progress, preview (pdf/image), download, rename, delete
-- [x] Link-to-record picker (client/listing/offer/transaction); filtered views per record surface in detail tabs
-- [x] Search + filter by category/record; sort by date/name
-
----
-
-# PHASE 15 — Reports (Analytics)
-
-Reference: Screen Inventory S2 (suggested screen — build it)
-
-## 15.1 Reports dashboard (B) → Prompt P15.1
-- [x] GCI to date vs annual goal (goal stored in Supabase profile settings); recharts progress + bar
-- [x] Deal volume by month (closed opportunities monetaryValue) — bar/sparkline
-- [x] Pipeline conversion funnel: Lead → Client → Under Contract → Closed (counts via stage/status queries)
-- [x] Average DOM (my_listings aggregate); Source attribution breakdown (contacts by source — pie/bar)
-- [x] Date-range selector (This month/quarter/year/custom); export CSV of underlying rows
-- [x] All aggregates computed client-side from paged live queries with cached results
-
----
-
-# PHASE 16 — Team
-
-## 16.1 Team directory (B) → Prompt P16.1
-- [x] Data: `GET location users` (GHL users API) — name, role, email, phone, avatar
-- [x] Member card + detail: assigned leads/clients counts (opportunity search by assignedTo), open tasks count
-- [x] Reassign action: bulk reassign selected opportunities/contacts to another user
-- [x] (If users API restricted by PIT scopes → fall back to team contacts tagged `type:team` and note limitation)
-
----
-
-# PHASE 17 — Settings
-
-Reference: `desktop/screens2.jsx`, `mobile/screen-settings.jsx`
-
-## 17.1 Settings (B) → Prompt P17.1
-- [x] Tab layout **(D)** / stacked sections **(M)**: Profile & Account · Notifications · Display · Integrations · Data
-- [x] **Profile:** avatar upload (Supabase Storage), name, brokerage, phone (profiles table), email (Supabase auth email change flow), change password
-- [x] **Notifications:** toggle preferences persisted to Supabase (new lead, offer updates, task due, appointment reminders)
-- [x] **Display:** theme (Light/Dark/System — wires dark mode), density, default landing page, default calendar view
-- [x] **Integrations:** the Phase 1.5 GHL credentials screen lives here; connection status card
-- [x] **Data:** export my data (CSV of contacts/opps via paged fetch), clear local cache button, app version
-- [x] Sign out (all screens), delete account (Supabase, confirm flow)
-
----
-
-# PHASE 18 — Global & Cross-Cutting Completion
-
-## 18.1 Quick Add & global modals (B) → Prompt P18.1
-- [x] **(D)** Topbar Quick Add menu → New Lead / Client / Contact / Listing / Offer / Task / Note / Event modals (reuse module modals)
-- [x] **(M)** FAB picker fully wired to all creation sheets
-- [x] Notifications popover **(D)** / sheet **(M)**: derived feed (overdue tasks, expiring offers, unread messages, today's appointments) w/ deep links + mark-read state (localStorage)
-
-## 18.2 Global search (B) → Prompt P18.2
-- [x] Parallel search across contacts, opportunities (both pipelines groups), my_listings, properties, offers; grouped results w/ type icons; keyboard nav (cmd+k on desktop); recent searches
-
-## 18.3 QA, polish & performance pass → Prompt P18.3
-- [x] Verify every screen against `SCREENS.md` + Screen Inventory (50 mobile / 41 desktop / auth) — checklist sweep
-- [x] Lighthouse pass: code-split confirmation, image lazy-load, bundle audit
-- [x] Error boundary per route; offline banner; 401 credential-expired interceptor → Integrations
-- [x] Accessibility: focus traps in modals, ARIA on kanban DnD, 44px targets, contrast check
-- [x] Empty-state copy pass; skeleton coverage audit; toast coverage for all mutations
-- [x] README: setup, env vars, PIT creation guide, architecture notes, v2 (Edge Function proxy + webhooks) migration notes
+**Verification gate for release:** `typecheck` ✅ · `lint` ✅ 0 errors · `vitest run` ✅ with real suites · `build` ✅ no chunk > 600 KB · manual smoke of each module against a live GHL sub-account (leads board drag, client detail tabs, listing/offer/MLS lists, send SMS + Email, calendar CRUD, tasks bulk edit, docs upload/download, reports render + CSV, settings save).
