@@ -45,7 +45,7 @@ The voice and feel are defined in `design.md`: professional, understated, dense,
 1. Give an agent a single, fast surface for their entire day: what's next, what's overdue, what needs a decision.
 2. Model the real-estate workflow natively — Leads → Clients (Buyer/Seller transactions) → Offers → Transactions → Closed — on top of GHL pipelines and custom objects.
 3. Deliver a **seamless, near-instant UX** despite a remote CRM backend, through aggressive prefetch, persisted cache, and optimistic updates (§7).
-4. Work equally well on desktop and phone from one codebase, matching the pre-designed prototype pixel-for-intent.
+4. Work equally well on desktop and phone from one codebase, matching `design.md` pixel-for-intent.
 5. Operate entirely on **live GHL data** — no mock data in the shipped app.
 
 ### 2.2 Non-goals (v1)
@@ -235,7 +235,7 @@ A remote CRM backend must still feel instant. This section is a **hard requireme
 
 ## 8. Functional Requirements by Module
 
-Each module's detailed screen/endpoint/field mapping is in `GHL_Integration_Mapping.md`; the ordered build steps are in `TASKS.md`. Requirements below define *what each module must do* on both surfaces. **Definition of Done for every module:** desktop + mobile implemented, wired to live data, loading/empty/error states present, TypeScript strict passes, matches `design.md` tokens.
+Each module's detailed screen/endpoint/field mapping is in `GHL_Integration_Mapping.md` (endpoint paths verified against the official GHL API docs); outstanding fixes and gaps per module are tracked in `TASKS.md` (the remediation plan). Requirements below define *what each module must do* on both surfaces. **Definition of Done for every module:** desktop + mobile implemented, wired to live data, loading/empty/error states present, TypeScript strict **and ESLint** pass, matches `design.md` tokens.
 
 ### 8.1 Authentication
 
@@ -421,29 +421,20 @@ The product implements `design.md` (this repo) exactly — the token values, pri
 
 ---
 
-## 13. Release Plan (Phased, ordered — no dates)
+## 13. Release Plan (Dependency-ordered — no dates)
 
-Phases are ordered by dependency, not schedule (per the companion `TASKS.md`).
+**Status:** the original 18-phase build (foundation → auth/integration layer → all 16 modules → cross-cutting completion) is implemented and merged. A full-repo review (`REVIEW_REPORT.md`) found the build structurally complete but **not release-ready** — wrong GHL endpoints in the service layer, a bootstrap race, storage-policy security gaps, and several unimplemented claims.
 
-1. **Foundation** — scaffold/tooling, design-system port, responsive shell & navigation.
-2. **Auth & integration layer** — Supabase auth + guards + profile/credentials tables; GHL client & typed services; query architecture, bootstrap prefetch, cache persistence; Settings ▸ Integrations onboarding.
-3. **Dashboard.**
-4. **Leads** (list/board, detail, modals, convert).
-5. **Clients** (Buyer/Seller/Both details, modals).
-6. **Contacts.**
-7. **My Listings.**
-8. **Offers.**
-9. **Transactions.**
-10. **Properties (MLS).**
-11. **Conversations.**
-12. **Calendar.**
-13. **Tasks.**
-14. **Notes.**
-15. **Docs (vault).**
-16. **Reports.**
-17. **Team.**
-18. **Settings** (full).
-19. **Cross-cutting completion** — Quick Add/FAB, global search, notifications, QA/accessibility/performance pass, README.
+**The path to release is now the remediation plan in `TASKS.md`**, ordered by dependency across six workstreams:
+
+1. **E (first slice)** — security & repo hygiene: untrack `.env`; lock down the avatars storage bucket; provision the `documents` bucket with owner-scoped policies.
+2. **A** — GHL API corrections: custom objects (`/objects/{schemaKey}`), custom fields/values/tags, conversations send/mark-read, calendar appointment endpoints, users endpoint, contacts server-side filtering, opportunities/KPI param hygiene.
+3. **B** — bootstrap & credentials lifecycle: fix the credentials-injection race, surface partial-bootstrap failures, non-destructive 401 handling, honor the `?next=` sign-in redirect.
+4. **C** — feature gaps: contacts directory polish, composer attachments/templates, calendar drag-reschedule, tasks bulk edit + scheduler, kanban ARIA, hover prefetch, object-schema bootstrap, account deletion, report pagination/date semantics, stage-name-based under-contract detection, display density.
+5. **D** — code quality: lint to zero (typed service layer), real test coverage over the integration layer, formatter decision, shared-hook fixes.
+6. **F** — performance & docs: bundle splitting, real splash progress, documentation reconciliation.
+
+**Release gate** (from `TASKS.md`): typecheck ✅ · lint 0 errors · real test suites green · no build chunk > 600 KB · manual live-data smoke of every module.
 
 **v2 (out of scope here):** Supabase Edge Function proxy (PIT never in browser) + GHL webhooks for push updates; client-facing portal.
 
