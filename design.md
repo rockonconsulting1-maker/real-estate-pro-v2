@@ -7,13 +7,15 @@ and offer ops. Both surfaces share one design language; this document is the
 source of truth for tokens, primitives, and the patterns that make the product
 feel coherent across screens.
 
-This design system was authored against the visual prototype (static HTML/JSX
-in the read-only Design repo) and is the source of truth for the **production
-build** — a single responsive **React 18 + TypeScript** app. The build must
-match the prototype: the tokens, primitives, and patterns below map directly
-onto the production stack (see "Stack & implementation" below). The prototype
-is a shape/interaction reference; the tokens here — not the prototype's raw
-CSS — are authoritative.
+This design system is the source of truth for the **production
+build** — a single responsive **React 18 + TypeScript** app. The
+tokens, primitives, and patterns below map directly
+onto the production stack (see "Stack & implementation" below); the token
+values here are authoritative and live in code at `src/styles/tokens.css`.
+Where the current implementation falls short of this spec (e.g. kanban
+drag-and-drop accessibility, display density, missing polish), the fixes
+are tracked as tasks in **`TASKS.md`** — implement them there rather than
+diverging from this document.
 
 The voice is **professional, human, slightly understated**. The product is a
 working tool, not a marketing site — so we avoid ornament, gradients, glass,
@@ -54,21 +56,21 @@ token below has a concrete home in the codebase.
   shared React components in `src/components/ui` on top of shadcn/ui + Radix
   (Button, Card, Table, Badge, Tabs/ToggleGroup, Progress, Dialog, Sheet,
   Popover, Command, Tooltip, …), themed with the tokens. The `.class` names in
-  §5 are the prototype's reference names; in the build they become component
-  props/variants, not literal classes.
+  §5 are legacy reference names from the original spec; in the build they are
+  component props/variants, not literal classes.
 - **Icons → lucide-react** (§7). `strokeWidth={1.6}`, 24×24 default.
 - **Charts / sparklines → recharts** (§5.3, §12.5).
 - **Dates, countdowns, relative time → date-fns** (§5.6, §9), wrapped in shared
   `Money`, `Countdown`, and `formatMoney`/`formatWhen` helpers.
 - **Forms → React Hook Form + Zod**; validation copy follows §9's error voice.
 - **Data → TanStack Query**; all live values (KPIs, lists, events) come from
-  query hooks. Any prototype `window.MOCK` / `window.Icon` reference in this
-  doc is historical — the build uses live data and lucide-react.
+  query hooks — the build uses live data only, and icons come from
+  lucide-react.
 - **Routing → React Router v6**; a `useSurface()` breakpoint hook selects
   desktop vs. mobile view components off the shared route tree (desktop
   ≥1024px, mobile <1024px).
 - **Responsiveness is breakpoint-driven, not device-driven.** The "iPhone 15"
-  and "1440×900" figures in §4 are prototype reference frames; the build is
+  and "1440×900" figures in §4 are design reference frames; the build is
   fluid within each surface.
 
 ---
@@ -278,11 +280,11 @@ the 18/22/28 stops for page-level rhythm.
 
 > **In the build, each primitive below is a shared React component** in
 > `src/components/ui` (or `components/shared`), built on shadcn/ui + Radix and
-> themed with the tokens. The `.class` names are the prototype's reference
+> themed with the tokens. The `.class` names are this spec's reference
 > vocabulary; production maps them to components + variants:
 >
-> | Prototype primitive | Build component (shadcn/Radix base) |
-> | ------------------- | ----------------------------------- |
+> | Spec primitive | Build component (shadcn/Radix base) |
+> | -------------- | ----------------------------------- |
 > | `.btn` / `.primary` / `.brand` / `.ghost` / `.sm` | `Button` (variant + size props) |
 > | `.icon-btn`, `.fab` | `Button` (`icon` variant) / custom `Fab` |
 > | `.card` / `.card-head` / `.card-pad` | `Card` (+ `CardHeader`/`CardContent`) |
@@ -468,8 +470,7 @@ cutesy.
 Icons come from **lucide-react**. Import per-icon (tree-shaken); render at
 24×24 with `strokeWidth={1.6}`, rounded caps and joins (lucide's defaults).
 Wrap common usages in a thin `Icon` helper if convenient, but do not maintain
-a hand-rolled SVG registry — the prototype's `window.Icon` set is superseded
-by the library.
+a hand-rolled SVG registry — the library supersedes any custom icon set.
 
 The established vocabulary maps to lucide names (use these unless a screen
 clearly needs another): `Home, Users, User, Briefcase, Contact, Calendar,
@@ -499,8 +500,7 @@ load. The only animation primitives are:
 - **Swipe reveal**: 180 ms ease-out translateX on the inner row (transform,
   not `left`, to stay on the GPU).
 - **Sheet / dialog transitions**: 180 ms slide-up + fade (Radix/vaul
-  defaults, tuned). (The prototype's "tweaks panel" was a dev-only affordance
-  and does not ship.)
+  defaults, tuned).
 
 Everything else is instant. The product is a tool; motion is feedback,
 not decoration.
@@ -572,13 +572,6 @@ src/
   hooks/                 · useSurface(), useBootstrap(), shared hooks
   types/                 · TS types (Zod-inferred)
 ```
-
-**Prototype origin (read-only Design repo):** the static prototype
-(`RC CRM Desktop.html`, `RC CRM Mobile.html`, `RC CRM Auth *.html`,
-`RC CRM Screen Inventory.html`, `desktop/*.jsx`, `mobile/*.jsx`, and the two
-`styles.css` files) lives in the Design repo and is the *shape/interaction*
-reference only. Port visuals and layouts from it; do not ship its code, its
-mock `data.jsx`, or its `window.Icon`/`window.MOCK` globals.
 
 Token edits live in **one** place: `src/styles/tokens.css` (+ the Tailwind
 theme that reads it). Both surfaces consume the same variables, so a brand
