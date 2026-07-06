@@ -1,0 +1,190 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Base Semantic Colors */
+    --bg: 0.985 0.004 85;
+    --bg-sunk: 0.965 0.005 85;
+    --bg-deep: 0.945 0.006 85;
+    --surface: 1 0 0;
+    
+    --border: 0.90 0.006 260;
+    --border-2: 0.94 0.005 260;
+    
+    --ink: 0.20 0.015 260;
+    --ink-2: 0.40 0.012 260;
+    --ink-3: 0.58 0.010 260;
+    --ink-4: 0.72 0.008 260;
+
+    --brand: 0.54 0.165 254;
+    --brand-ink: 0.42 0.16 254;
+    --brand-soft: 0.955 0.028 254;
+    --brand-foreground: 1 0 0;
+
+    --success: 0.60 0.15 150;
+    --success-soft: 0.955 0.05 150;
+    --warning: 0.72 0.155 70;
+    --warning-soft: 0.955 0.05 70;
+    --destructive: 0.60 0.21 25;
+    --destructive-soft: 0.955 0.05 25;
+    --info: 0.65 0.13 230;
+    --info-soft: 0.955 0.05 230;
+    
+    /* Role Colors */
+    --role-buyer: 0.62 0.14 254;
+    --role-buyer-soft: 0.96 0.03 254;
+    --role-buyer-ink: 0.40 0.14 254;
+    
+    --role-seller: 0.58 0.17 310;
+    --role-seller-soft: 0.96 0.035 310;
+    --role-seller-ink: 0.42 0.15 310;
+    
+    --role-past: 0.58 0.14 150;
+    --role-past-soft: 0.96 0.04 150;
+    --role-past-ink: 0.38 0.13 150;
+    
+    --role-vendor: 0.55 0.08 260;
+    --role-vendor-soft: 0.95 0.01 260;
+    --role-vendor-ink: 0.40 0.01 260;
+    
+    --role-soi: 0.62 0.14 30;
+    --role-soi-soft: 0.96 0.04 30;
+    --role-soi-ink: 0.42 0.13 30;
+
+    /* Stage Colors - Rule: Stage colors never fill cards, used for indicators only */
+    --stage-new: #ADB5BD;
+    --stage-contacted: #74C0FC;
+    --stage-engaged: #339AF0;
+    --stage-nurturing: #9775FA;
+    --stage-appt: #FAB005;
+    --stage-agreement: #40C057;
+
+    /* Shadcn compatibility mappings */
+    --background: var(--bg);
+    --foreground: var(--ink);
+    --card: var(--surface);
+    --card-foreground: var(--ink);
+    --popover: var(--surface);
+    --popover-foreground: var(--ink);
+    --primary: var(--brand);
+    --primary-foreground: var(--brand-foreground);
+    --secondary: var(--bg-sunk);
+    --secondary-foreground: var(--ink-2);
+    --muted: var(--bg-sunk);
+    --muted-foreground: var(--ink-3);
+    --accent: var(--brand-soft);
+    --accent-foreground: var(--brand-ink);
+    --destructive-foreground: 1 0 0;
+    --ring: var(--brand);
+
+    --radius: 10px;
+    --radius-sm: 6px;
+    --radius-lg: 14px;
+    --shadow-1: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+    --shadow-2: 0 4px 12px -2px rgb(0 0 0 / 0.12), 0 0 0 1px rgb(0 0 0 / 0.02);
+    --shadow-3: 0 12px 32px -4px rgb(0 0 0 / 0.15), 0 0 0 1px rgb(0 0 0 / 0.02);
+  }
+
+  [data-theme="dark"],
+  .dark {
+    --bg: 0.13 0.008 260;
+    --bg-sunk: 0.10 0.008 260;
+    --bg-deep: 0.08 0.007 260;
+    --surface: 0.17 0.009 260;
+    
+    --border: 0.25 0.010 260;
+    --border-2: 0.21 0.009 260;
+    
+    --ink: 0.94 0.008 260;
+    --ink-2: 0.78 0.008 260;
+    --ink-3: 0.58 0.010 260;
+    --ink-4: 0.40 0.008 260;
+
+    --brand: 0.62 0.155 254;
+    --brand-ink: 0.90 0.10 254;
+    --brand-soft: 0.25 0.05 254;
+    --brand-foreground: 0.1 0.02 254;
+
+    --success: 0.68 0.15 150;
+    --success-soft: 0.25 0.05 150;
+    --warning: 0.80 0.155 70;
+    --warning-soft: 0.25 0.05 70;
+    --destructive: 0.68 0.21 25;
+    --destructive-soft: 0.25 0.05 25;
+    --info: 0.73 0.13 230;
+    --info-soft: 0.25 0.05 230;
+    
+    /* Role Colors - Dark */
+    --role-buyer: 0.70 0.14 254;
+    --role-buyer-soft: 0.25 0.05 254;
+    --role-buyer-ink: 0.85 0.10 254;
+    
+    --role-seller: 0.66 0.17 310;
+    --role-seller-soft: 0.25 0.05 310;
+    --role-seller-ink: 0.85 0.10 310;
+    
+    --role-past: 0.66 0.14 150;
+    --role-past-soft: 0.25 0.05 150;
+    --role-past-ink: 0.85 0.10 150;
+    
+    --role-vendor: 0.63 0.08 260;
+    --role-vendor-soft: 0.25 0.05 260;
+    --role-vendor-ink: 0.85 0.05 260;
+    
+    --role-soi: 0.70 0.14 30;
+    --role-soi-soft: 0.25 0.05 30;
+    --role-soi-ink: 0.85 0.10 30;
+
+    /* Stage Colors remain the same in dark mode */
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+@layer utilities {
+  .touch-target {
+    @apply min-h-[44px] min-w-[44px] flex items-center justify-center;
+  }
+  .tabular-nums {
+    font-feature-settings: "tnum";
+    font-variant-numeric: tabular-nums lining-nums;
+  }
+  
+  /* Typography Scale */
+  .text-page-title-desktop {
+    @apply text-[24px] font-bold tracking-[-0.02em];
+  }
+  .text-page-title-mobile {
+    @apply text-[28px] font-bold tracking-[-0.02em];
+  }
+  .text-card-header {
+    @apply text-[13px] font-semibold tracking-[0.04em] uppercase;
+  }
+  .text-body-desktop {
+    @apply text-[14px] tracking-[-0.005em];
+  }
+  .text-body-mobile {
+    @apply text-[15px] tracking-[-0.005em];
+  }
+  .text-meta {
+    @apply text-[12px] font-normal tracking-normal text-muted-foreground;
+  }
+  .text-eyebrow {
+    @apply text-[10.5px] font-semibold tracking-[0.06em] uppercase;
+  }
+  .text-stat {
+    @apply text-[26px] font-bold tracking-[-0.025em] tabular-nums;
+  }
+  .text-time {
+    @apply text-[11px] font-medium tracking-normal font-mono tabular-nums;
+  }
+}
