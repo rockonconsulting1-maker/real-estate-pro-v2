@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { ghl } from '@/lib/queryKeys';
 import { mlsPropertiesService } from '@/lib/ghl/services';
 import { cleanCustomObjectFields } from '@/types/ghl';
-import { DesktopShell } from '@/components/desktop/shell';
+
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ErrorState } from '@/components/shared/states';
@@ -26,7 +26,7 @@ export function DesktopPropertyDetail({ id }: { id: string }) {
 
   if (isLoading) {
     return (
-      <DesktopShell>
+      <>
         <div className="p-6 space-y-6">
           <Skeleton className="h-10 w-32" />
           <Skeleton className="h-64 w-full rounded-xl" />
@@ -37,25 +37,25 @@ export function DesktopPropertyDetail({ id }: { id: string }) {
             <Skeleton className="h-24 rounded-xl" />
           </div>
         </div>
-      </DesktopShell>
+      </>
     );
   }
 
   if (error || !property) {
     return (
-      <DesktopShell>
+      <>
         <div className="p-6">
           <Button variant="ghost" onClick={() => navigate('/mls')} className="mb-4 -ml-4 text-muted-foreground">
             <ArrowLeft className="h-4 w-4 mr-2" /> Back to MLS
           </Button>
           <ErrorState message="Failed to load property details" onRetry={() => refetch()} />
         </div>
-      </DesktopShell>
+      </>
     );
   }
 
   return (
-    <DesktopShell>
+    <>
       <div className="h-full flex flex-col overflow-hidden">
         {/* Header */}
         <div className="border-b bg-surface px-6 py-4 flex-shrink-0">
@@ -114,7 +114,7 @@ export function DesktopPropertyDetail({ id }: { id: string }) {
           </div>
         </div>
       </div>
-    </DesktopShell>
+    </>
   );
 }
 

@@ -1,5 +1,5 @@
 import React from 'react';
-import { MobileShell } from '@/components/mobile/shell';
+
 import { InboxList } from './components/inbox-list';
 import { ThreadView } from './components/thread-view';
 
@@ -17,10 +17,10 @@ export function MobileConversationsView({ selectedId }: Props) {
   }
 
   return (
-    <MobileShell>
+    <>
       <div className="h-[calc(100vh-80px)]">
         <InboxList selectedId={selectedId} isMobile />
       </div>
-    </MobileShell>
+    </>
   );
 }

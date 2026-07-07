@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useForm as useHookForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -20,6 +20,7 @@ type SignInValues = z.infer<typeof signInSchema>;
 
 export function SignIn() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -44,7 +45,12 @@ export function SignIn() {
         return;
       }
 
-      navigate('/');
+      const next = searchParams.get('next');
+      if (next && next.startsWith('/') && !next.startsWith('//') && !next.startsWith('/auth')) {
+        navigate(next, { replace: true });
+      } else {
+        navigate('/');
+      }
     } catch (error) {
       toast.error('An unexpected error occurred');
     } finally {
@@ -68,6 +74,7 @@ export function SignIn() {
               id="email"
               type="email"
               placeholder="name@example.com"
+              autoComplete="email"
               {...register('email')}
               disabled={isLoading}
             />
@@ -90,6 +97,7 @@ export function SignIn() {
               <Input
                 id="password"
                 type={showPassword ? 'text' : 'password'}
+                autoComplete="current-password"
                 {...register('password')}
                 disabled={isLoading}
               />

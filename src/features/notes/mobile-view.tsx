@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { ghl } from '@/lib/queryKeys';
 import { contactsService } from '@/lib/ghl/services/contacts';
 import { notesService } from '@/lib/ghl/services/notes';
-import { MobileShell } from '@/components/mobile/shell';
+
 import { Button } from '@/components/ui/button';
 import { Plus, User, FileText, Calendar } from 'lucide-react';
 import { format } from 'date-fns';
@@ -50,7 +50,7 @@ export function MobileNotesView() {
   );
 
   return (
-    <MobileShell>
+    <>
       <div className="p-4 space-y-4">
         <Input 
           placeholder="Search notes..." 
@@ -119,6 +119,6 @@ export function MobileNotesView() {
           onOpenChange={(open) => !open && setSelectedNote(null)} 
         />
       )}
-    </MobileShell>
+    </>
   );
 }

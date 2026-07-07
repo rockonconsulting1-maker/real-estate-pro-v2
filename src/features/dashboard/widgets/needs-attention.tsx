@@ -11,8 +11,12 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Link } from 'react-router-dom';
 import { AlertCircle, CheckSquare, Clock, FileWarning, Calendar } from 'lucide-react';
 import { subDays, startOfDay, endOfDay, addDays, format, isPast } from 'date-fns';
+import { useGhlCredentials } from '@/hooks/use-ghl-credentials';
+import { useBootstrap } from '@/hooks/use-bootstrap';
 
 export function NeedsAttentionWidget() {
+  const { defaultCalendarId } = useGhlCredentials();
+  const { data: bootstrapData } = useBootstrap();
   const leadPipeline = PipelineRegistry.byName('lead');
 
   const queries = useQueries({
@@ -29,9 +33,12 @@ export function NeedsAttentionWidget() {
       {
         queryKey: ghl.opps({ pipelineId: leadPipeline?.pipelineId, stale: true }),
         queryFn: () => {
-          const sevenDaysAgo = subDays(new Date(), 7).toISOString();
-          // Assuming updatedAt is the best proxy for lastActivity
-          return opportunitiesService.search({ pipelineId: leadPipeline?.pipelineId, filters: [{ field: 'updatedAt', operator: 'lte', value: sevenDaysAgo }, { field: 'status', operator: 'eq', value: 'open' }] });
+          const sevenDaysAgo = subDays(new Date(), 7);
+          return opportunitiesService.search({ pipelineId: leadPipeline?.pipelineId, status: 'open', limit: 100 }).then(res => {
+            return {
+              opportunities: res.opportunities.filter(o => o.updatedAt && new Date(o.updatedAt) <= sevenDaysAgo)
+            };
+          });
         },
         enabled: !!leadPipeline?.pipelineId,
         staleTime: STALE_TIMES.LIST,
@@ -39,12 +46,18 @@ export function NeedsAttentionWidget() {
       // 2: Expiring Offers
       {
         queryKey: ghl.records('real_estate_offer', { expiring: true }),
-        queryFn: () => {
-          const in48Hours = addDays(new Date(), 2).toISOString();
-          return offersService.search({ filters: [
-            { field: 'status', operator: 'in', value: ['submitted', 'pending'] },
-            { field: 'irrevocable_until', operator: 'lte', value: in48Hours }
-          ]});
+        queryFn: async () => {
+          const in48Hours = addDays(new Date(), 2);
+          const res = await offersService.search({ pageLimit: 100 });
+          return {
+            ...res,
+            records: res.records.filter(o => {
+              const status = (o.customFields as any)?.status || o.name?.toLowerCase();
+              const irrevocable = (o.customFields as any)?.irrevocable_until;
+              if (!irrevocable || (status !== 'submitted' && status !== 'pending')) return false;
+              return new Date(irrevocable) <= in48Hours;
+            })
+          };
         },
         staleTime: STALE_TIMES.LIST,
       },
@@ -52,11 +65,14 @@ export function NeedsAttentionWidget() {
       {
         queryKey: ghl.events({ range: 'today-unconfirmed' }),
         queryFn: () => {
-          const start = startOfDay(new Date()).getTime().toString();
-          const end = endOfDay(new Date()).getTime().toString();
-          return calendarsService.eventsByRange(start, end);
+          const calendarId = defaultCalendarId || (bootstrapData?.calendars?.[0] as any)?.id;
+          if (!calendarId) return [];
+          const start = startOfDay(new Date());
+          const end = endOfDay(new Date());
+          return calendarsService.eventsByRange({ start, end, calendarId });
         },
         staleTime: STALE_TIMES.LIST,
+        enabled: !!defaultCalendarId || !!(bootstrapData?.calendars?.[0] as any)?.id,
       }
     ]
   });

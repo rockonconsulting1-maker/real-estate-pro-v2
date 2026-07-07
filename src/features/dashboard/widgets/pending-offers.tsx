@@ -10,7 +10,7 @@ import { Money, StatusChip, Countdown } from '@/components/shared/primitives';
 export function PendingOffersWidget() {
   const { data, isLoading } = useQuery({
     queryKey: ghl.records('real_estate_offer', { status: 'pending', sort: 'createdAt_desc', limit: 5 }),
-    queryFn: () => offersService.search({ filters: [{ field: 'status', operator: 'in', value: ['submitted', 'pending'] }] }),
+    queryFn: () => offersService.search({ pageLimit: 100 }), // Filter client-side since API may reject complex filters
     staleTime: STALE_TIMES.LIST,
   });
 
@@ -29,6 +29,10 @@ export function PendingOffersWidget() {
   }
 
   const offers = (data?.records || [])
+    .filter(o => {
+      const status = (o.customFields as any)?.status || o.name?.toLowerCase();
+      return status?.includes('submitted') || status?.includes('pending');
+    })
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
     .slice(0, 5);
 

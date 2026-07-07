@@ -1,6 +1,6 @@
 import React from 'react';
 import { Routes, Route, Navigate, NavLink, useLocation } from 'react-router-dom';
-import { DesktopShell } from '@/components/desktop/shell';
+
 import { ProfileTab } from './components/profile-tab';
 import { NotificationsTab } from './components/notifications-tab';
 import { DisplayTab } from './components/display-tab';
@@ -21,7 +21,7 @@ export function DesktopSettingsView() {
   const location = useLocation();
 
   return (
-    <DesktopShell>
+    <>
       <div className="p-8 max-w-7xl mx-auto flex gap-12">
         <aside className="w-64 shrink-0">
           <div className="sticky top-8 space-y-6">
@@ -64,6 +64,6 @@ export function DesktopSettingsView() {
           </Routes>
         </main>
       </div>
-    </DesktopShell>
+    </>
   );
 }

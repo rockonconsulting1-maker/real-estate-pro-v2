@@ -154,3 +154,12 @@ export function StatusChip({ status, label }: { status: 'success' | 'warning' | 
   };
   return <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${styles[status]}`}>{label}</span>;
 }
+
+export function MapPlaceholder({ className = '' }: { className?: string }) {
+  return (
+    <div className={`map flex items-center justify-center text-muted-foreground font-medium text-sm border rounded-lg ${className}`}>
+      Map View
+    </div>
+  );
+}
+

@@ -12,6 +12,10 @@ A production-ready React web application for real estate professionals. Features
 - **Auth & Storage:** Supabase
 - **Data Source:** GoHighLevel (GHL) API 2.0 via Private Integration Token (PIT)
 
+## Code Formatting & Linting
+
+Code formatting and code quality checks are handled entirely via ESLint. We do not use Prettier in this project in order to maintain a single source of truth for code style rules. Run `npm run lint` or `bun run lint` to verify the codebase.
+
 ## Setup & Environment Variables
 
 Create a `.env` file in the root directory (do not commit this file). See `.env.example` for the required variables:
@@ -19,11 +23,9 @@ Create a `.env` file in the root directory (do not commit this file). See `.env.
 ```env
 VITE_SUPABASE_URL=your_supabase_project_url
 VITE_SUPABASE_PUBLISHABLE_KEY=your_supabase_anon_key
-
-# Optional: For local development bypass of the onboarding screen
-# VITE_GHL_PIT=your_ghl_pit
-# VITE_GHL_LOCATION_ID=your_ghl_location_id
 ```
+
+> **Note:** The `VITE_SUPABASE_PUBLISHABLE_KEY` is public-by-design, but ensure your Supabase project has Row Level Security (RLS) enabled. The GHL Location ID should be treated as non-secret-but-private.
 
 ## Creating a GoHighLevel Private Integration Token (PIT)
 
@@ -38,13 +40,18 @@ VITE_SUPABASE_PUBLISHABLE_KEY=your_supabase_anon_key
    - `calendars.readonly`, `calendars/events.readonly`, `calendars/events.write`
    - `users.readonly`
    - `locations.readonly`
-   - `custom_fields.readonly`, `custom_values.readonly`
+   - `locations/customFields.readonly`, `locations/customValues.readonly`
    - `tags.readonly`, `tags.write`
    - `medias.readonly`, `medias.write`
    - `tasks.readonly`, `tasks.write`
    - `notes.readonly`, `notes.write`
+   - `templates.readonly`
 4. Copy the generated token and your Location ID.
 5. In the CRM, after signing up, you will be prompted to enter these credentials in the Integrations Settings tab.
+
+> **Development Fallback:** In local development mode (`npm run dev`), you can bypass the Integrations onboarding screen by setting `VITE_GHL_PIT` and `VITE_GHL_LOCATION_ID` in your `.env` file. These fallbacks are ignored in production builds.
+
+> **Document Uploads:** Note that progress tracking for document uploads to Supabase Storage is currently limited by the underlying SDK capabilities. Large files may appear to pause before completion.
 
 ## Migration Notes for v2 (Edge Function Proxy)
 

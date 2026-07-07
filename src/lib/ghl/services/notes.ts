@@ -3,12 +3,12 @@ import { GhlNote, ghlNoteSchema } from '@/types/ghl';
 
 export const notesService = {
   async list(contactId: string): Promise<GhlNote[]> {
-    const result = await ghlFetch<any>(`/contacts/${contactId}/notes`);
-    return (result.notes || []).map((n: any) => ghlNoteSchema.parse(n));
+    const result = await ghlFetch<{ notes: unknown[] }>(`/contacts/${contactId}/notes`);
+    return (result.notes || []).map((n) => ghlNoteSchema.parse(n));
   },
 
   async get(contactId: string, noteId: string): Promise<GhlNote> {
-    const result = await ghlFetch<any>(`/contacts/${contactId}/notes/${noteId}`);
+    const result = await ghlFetch<{ note: unknown }>(`/contacts/${contactId}/notes/${noteId}`);
     return ghlNoteSchema.parse(result.note);
   },
 

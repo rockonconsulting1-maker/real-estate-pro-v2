@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { ghl } from '@/lib/queryKeys';
 import { offersService } from '@/lib/ghl/services';
 import { cleanCustomObjectFields } from '@/types/ghl';
-import { DesktopShell } from '@/components/desktop/shell';
+
 import { VirtualizedTable } from '@/components/shared/virtualized';
 import { Money, Countdown, StatusChip } from '@/components/shared/primitives';
 import { Input } from '@/components/ui/input';
@@ -27,12 +27,12 @@ export function DesktopOffersView() {
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ghl.records('real_estate_offer', { query: debouncedSearch }),
     queryFn: async () => {
-      let filters: any = undefined;
+      const res = await offersService.search({ query: debouncedSearch, pageLimit: 100 });
+      let records = res.records.map(r => cleanCustomObjectFields(r, 'real_estate_offer'));
       if (statusFilter !== 'all') {
-        filters = [{ field: 'status', operator: 'eq', value: statusFilter }];
+        records = records.filter(r => r.status === statusFilter || r.offer_status === statusFilter);
       }
-      const res = await offersService.search({ query: debouncedSearch, filters });
-      return res.records.map(r => cleanCustomObjectFields(r, 'real_estate_offer'));
+      return records;
     },
   });
 
@@ -87,7 +87,7 @@ export function DesktopOffersView() {
   ];
 
   return (
-    <DesktopShell>
+    <>
       <div className="h-full flex flex-col overflow-hidden bg-background">
         <div className="flex-none p-6 pb-4 border-b">
           <div className="flex items-center justify-between mb-4">
@@ -143,6 +143,6 @@ export function DesktopOffersView() {
         </div>
       </div>
       <NewOfferModal open={isNewOfferOpen} onOpenChange={setIsNewOfferOpen} />
-    </DesktopShell>
+    </>
   );
 }

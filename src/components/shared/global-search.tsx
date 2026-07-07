@@ -5,7 +5,7 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { contactsService } from '@/lib/ghl/services/contacts';
 import { opportunitiesService } from '@/lib/ghl/services/opportunities';
-import { myListingsService, offersService, objectsService } from '@/lib/ghl/services/objects';
+import { myListingsService, offersService, objectsService, OBJECT_KEYS } from '@/lib/ghl/services/objects';
 import { useSurface } from '@/hooks/use-surface';
 import { Avatar, StatusChip } from './primitives';
 
@@ -66,7 +66,7 @@ export function GlobalSearch({ open, onOpenChange }: GlobalSearchProps) {
         opportunitiesService.search({ q: debouncedQuery }),
         myListingsService.search({ query: debouncedQuery, pageLimit: 3 }),
         offersService.search({ query: debouncedQuery, pageLimit: 3 }),
-        objectsService.searchRecords('properties', { query: debouncedQuery, pageLimit: 3 })
+        objectsService.searchRecords(OBJECT_KEYS.properties, { query: debouncedQuery, pageLimit: 3 })
       ]);
 
       return {

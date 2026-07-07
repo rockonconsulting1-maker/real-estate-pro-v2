@@ -2,19 +2,19 @@ import { ghlFetch, getGhlCredentials } from '../client';
 import { GhlTask, ghlTaskSchema } from '@/types/ghl';
 
 export const tasksGlobalService = {
-  async search(params: { contactId?: string; completed?: boolean; page?: number; assignedTo?: string } = {}): Promise<{ tasks: GhlTask[]; meta: any }> {
+  async search(params: { contactId?: string; completed?: boolean; page?: number; assignedTo?: string } = {}): Promise<{ tasks: GhlTask[]; meta: Record<string, unknown> }> {
     const { locationId } = getGhlCredentials();
-    const result = await ghlFetch<any>(`/locations/${locationId}/tasks/search`, {
+    const result = await ghlFetch<{ tasks: unknown[]; meta?: Record<string, unknown> }>(`/locations/${locationId}/tasks/search`, {
       method: 'POST',
       body: params
     });
     
-    const tasks = (result.tasks || []).map((t: any) => ghlTaskSchema.parse(t));
+    const tasks = (result.tasks || []).map((t) => ghlTaskSchema.parse(t));
     return { tasks, meta: result.meta || {} };
   },
 
   async create(contactId: string, data: Partial<GhlTask>): Promise<GhlTask> {
-    const result = await ghlFetch<{task: any}>(`/contacts/${contactId}/tasks`, {
+    const result = await ghlFetch<{task: unknown}>(`/contacts/${contactId}/tasks`, {
       method: 'POST',
       body: data
     });
@@ -22,7 +22,7 @@ export const tasksGlobalService = {
   },
 
   async update(contactId: string, taskId: string, data: Partial<GhlTask>): Promise<GhlTask> {
-    const result = await ghlFetch<{task: any}>(`/contacts/${contactId}/tasks/${taskId}`, {
+    const result = await ghlFetch<{task: unknown}>(`/contacts/${contactId}/tasks/${taskId}`, {
       method: 'PUT',
       body: data
     });

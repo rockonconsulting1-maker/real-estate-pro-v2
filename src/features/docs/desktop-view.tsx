@@ -2,7 +2,7 @@ import React, { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { sb } from '@/lib/queryKeys';
 import { docsService, DocumentRecord } from '@/lib/supabase/storage';
-import { DesktopShell } from '@/components/desktop/shell';
+
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Search, Upload, File, MoreVertical, Download, Edit2, Trash2, Folder, FileText, Image as ImageIcon } from 'lucide-react';
@@ -121,7 +121,7 @@ export function DesktopDocsView() {
   };
 
   return (
-    <DesktopShell>
+    <>
       <div className="h-full flex">
         {/* Sidebar */}
         <div className="w-64 border-r bg-surface p-4 flex flex-col gap-2 shrink-0">
@@ -299,6 +299,6 @@ export function DesktopDocsView() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </DesktopShell>
+    </>
   );
 }

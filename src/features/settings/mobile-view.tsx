@@ -1,5 +1,5 @@
 import React from 'react';
-import { MobileShell } from '@/components/mobile/shell';
+
 import { ProfileTab } from './components/profile-tab';
 import { NotificationsTab } from './components/notifications-tab';
 import { DisplayTab } from './components/display-tab';
@@ -10,7 +10,7 @@ import { User, Bell, Monitor, Key, Database } from 'lucide-react';
 
 export function MobileSettingsView() {
   return (
-    <MobileShell>
+    <>
       <div className="p-4 space-y-6 pb-24">
         <Accordion type="multiple" defaultValue={['profile', 'integrations']} className="w-full space-y-4">
           <AccordionItem value="profile" className="border rounded-lg bg-card px-4">
@@ -99,6 +99,6 @@ export function MobileSettingsView() {
           </AccordionItem>
         </Accordion>
       </div>
-    </MobileShell>
+    </>
   );
 }

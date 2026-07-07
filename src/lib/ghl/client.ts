@@ -67,6 +67,7 @@ export function getGhlCredentials() {
 
 interface GhlFetchOptions extends Omit<RequestInit, 'body'> {
   body?: any;
+  rawBody?: any; // For FormData
   query?: Record<string, any>;
   skipDedupe?: boolean;
 }
@@ -111,12 +112,13 @@ export async function ghlFetch<T>(path: string, options: GhlFetchOptions = {}): 
       if (options.body && !headers.has('Content-Type')) {
         headers.set('Content-Type', 'application/json');
       }
+      // Do not set Content-Type for FormData (browser sets it with boundary)
 
       try {
         const response = await fetch(url.toString(), {
           ...options,
           headers,
-          body: options.body ? JSON.stringify(options.body) : undefined,
+          body: options.rawBody ? options.rawBody : (options.body ? JSON.stringify(options.body) : undefined),
         });
 
         if (response.ok) {

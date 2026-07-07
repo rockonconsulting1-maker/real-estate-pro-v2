@@ -2,7 +2,7 @@ import React from 'react';
 import { useQueries } from '@tanstack/react-query';
 import { ghl, STALE_TIMES } from '@/lib/queryKeys';
 import { opportunitiesService } from '@/lib/ghl/services/opportunities';
-import { offersService } from '@/lib/ghl/services/objects';
+import { offersService, OBJECT_KEYS } from '@/lib/ghl/services/objects';
 import { PipelineRegistry } from '@/lib/pipeline-registry';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -15,12 +15,14 @@ export function KpiGridWidget() {
   const buyerPipeline = PipelineRegistry.byName('buyer');
   const sellerPipeline = PipelineRegistry.byName('seller');
 
+  const registry = PipelineRegistry;
+
   const queries = useQueries({
     queries: [
       // 0: Active Leads
       {
         queryKey: ghl.opps({ pipelineId: leadPipeline?.pipelineId, status: 'open' }),
-        queryFn: () => opportunitiesService.search({ pipelineId: leadPipeline?.pipelineId, filters: [{ field: 'status', operator: 'eq', value: 'open' }] }),
+        queryFn: () => opportunitiesService.search({ pipelineId: leadPipeline?.pipelineId, status: 'open' }),
         enabled: !!leadPipeline?.pipelineId,
         staleTime: STALE_TIMES.LIST,
       },
@@ -29,10 +31,10 @@ export function KpiGridWidget() {
         queryKey: ghl.opps({ pipelines: [buyerPipeline?.pipelineId, sellerPipeline?.pipelineId], status: 'open' }),
         queryFn: async () => {
           const [buyers, sellers] = await Promise.all([
-            buyerPipeline?.pipelineId ? opportunitiesService.search({ pipelineId: buyerPipeline.pipelineId, filters: [{ field: 'status', operator: 'eq', value: 'open' }] }) : { meta: { total: 0 } },
-            sellerPipeline?.pipelineId ? opportunitiesService.search({ pipelineId: sellerPipeline.pipelineId, filters: [{ field: 'status', operator: 'eq', value: 'open' }] }) : { meta: { total: 0 } },
+            buyerPipeline?.pipelineId ? opportunitiesService.search({ pipelineId: buyerPipeline.pipelineId, status: 'open' }) : { meta: { total: 0 } },
+            sellerPipeline?.pipelineId ? opportunitiesService.search({ pipelineId: sellerPipeline.pipelineId, status: 'open' }) : { meta: { total: 0 } },
           ]);
-          return { total: (buyers.meta?.total || 0) + (sellers.meta?.total || 0) };
+          return { total: (Number(buyers.meta?.total) || 0) + (Number(sellers.meta?.total) || 0) };
         },
         staleTime: STALE_TIMES.LIST,
       },
@@ -42,20 +44,28 @@ export function KpiGridWidget() {
         queryFn: async () => {
           // Fallback: just search for any open opps and filter client side if stage filter is complex
           // Ideally we would filter by stage ID
-          const res = await opportunitiesService.search({ filters: [{ field: 'status', operator: 'eq', value: 'open' }] });
+          const res = await opportunitiesService.search({ status: 'open', limit: 100 });
           return { total: res.opportunities?.filter(o => {
-             const pos = PipelineRegistry.stagePosition(o.pipelineStageId);
-             // Assume position >= 3 is under contract, or check name
-             const name = PipelineRegistry.stageLabel(o.pipelineStageId).toLowerCase();
-             return name.includes('contract') || pos >= 3;
+             const pos = registry.stagePosition(o.pipelineStageId);
+             const ucPos = registry.underContractPosition(o.pipelineId || '');
+             return ucPos !== -1 && pos >= ucPos;
           }).length || 0 };
         },
         staleTime: STALE_TIMES.LIST,
       },
       // 3: Pending Offers
       {
-        queryKey: ghl.records('real_estate_offer', { status: 'pending' }),
-        queryFn: () => offersService.search({ filters: [{ field: 'status', operator: 'in', value: ['submitted', 'pending'] }] }),
+        queryKey: ghl.records(OBJECT_KEYS.offers, { status: 'pending' }),
+        queryFn: async () => {
+          const res = await offersService.search({ pageLimit: 100 });
+          return {
+            ...res,
+            records: res.records.filter(o => {
+              const status = (o.customFields as any)?.status || o.name?.toLowerCase();
+              return status?.includes('submitted') || status?.includes('pending');
+            })
+          };
+        },
         staleTime: STALE_TIMES.LIST,
       },
       // 4: New Leads (7d)
@@ -63,7 +73,11 @@ export function KpiGridWidget() {
         queryKey: ghl.opps({ pipelineId: leadPipeline?.pipelineId, recent: '7d' }),
         queryFn: () => {
           const sevenDaysAgo = subDays(new Date(), 7).toISOString();
-          return opportunitiesService.search({ pipelineId: leadPipeline?.pipelineId, filters: [{ field: 'createdAt', operator: 'gte', value: sevenDaysAgo }] });
+          return opportunitiesService.search({ pipelineId: leadPipeline?.pipelineId, limit: 100 }).then(res => {
+            return {
+              meta: { total: res.opportunities.filter(o => o.createdAt && new Date(o.createdAt) >= subDays(new Date(), 7)).length }
+            };
+          });
         },
         enabled: !!leadPipeline?.pipelineId,
         staleTime: STALE_TIMES.LIST,
@@ -71,14 +85,20 @@ export function KpiGridWidget() {
       // 5: Closings this month
       {
         queryKey: ghl.records('real_estate_offer', { closingThisMonth: true }),
-        queryFn: () => {
-          const start = startOfMonth(new Date()).toISOString();
-          const end = endOfMonth(new Date()).toISOString();
-          return offersService.search({ filters: [
-            { field: 'status', operator: 'eq', value: 'accepted' },
-            { field: 'closing_date', operator: 'gte', value: start },
-            { field: 'closing_date', operator: 'lte', value: end },
-          ]});
+        queryFn: async () => {
+          const start = startOfMonth(new Date());
+          const end = endOfMonth(new Date());
+          const res = await offersService.search({ pageLimit: 100 });
+          return {
+            ...res,
+            records: res.records.filter(o => {
+              const status = (o.customFields as any)?.status || o.name?.toLowerCase();
+              const closingDate = (o.customFields as any)?.closing_date;
+              if (!closingDate || (status !== 'accepted' && status !== 'closed')) return false;
+              const date = new Date(closingDate);
+              return date >= start && date <= end;
+            })
+          };
         },
         staleTime: STALE_TIMES.LIST,
       }
@@ -122,7 +142,7 @@ export function KpiGridWidget() {
     },
     {
       title: 'New Leads (7d)',
-      value: queries[4].data?.meta?.total || queries[4].data?.opportunities?.length || 0,
+      value: (queries[4].data as any)?.meta?.total || (queries[4].data as any)?.opportunities?.length || 0,
       icon: TrendingUp,
       link: '/leads?recent=7d',
       color: 'text-success',

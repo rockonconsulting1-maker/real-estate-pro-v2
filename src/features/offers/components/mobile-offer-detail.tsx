@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ghl } from '@/lib/queryKeys';
 import { objectsService } from '@/lib/ghl/services';
 import { cleanCustomObjectFields } from '@/types/ghl';
-import { MobileShell } from '@/components/mobile/shell';
+
 import { Money, Countdown, StatusChip } from '@/components/shared/primitives';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -46,22 +46,22 @@ export function MobileOfferDetail() {
 
   if (isLoading) {
     return (
-      <MobileShell>
+      <>
         <div className="p-4 space-y-4">
           <Skeleton className="h-32 w-full rounded-xl" />
           <Skeleton className="h-64 w-full rounded-xl" />
         </div>
-      </MobileShell>
+      </>
     );
   }
 
   if (error || !offer) {
     return (
-      <MobileShell>
+      <>
         <div className="p-4">
           <ErrorState message="Failed to load offer details" onRetry={() => window.location.reload()} />
         </div>
-      </MobileShell>
+      </>
     );
   }
 
@@ -70,7 +70,7 @@ export function MobileOfferDetail() {
     (new Date(offer.irrevocable_until).getTime() - new Date().getTime()) > 0;
 
   return (
-    <MobileShell>
+    <>
       <div className="flex flex-col min-h-full pb-24">
         {/* Header */}
         <div className="sticky top-0 z-10 bg-background/80 backdrop-blur-md border-b px-4 py-3 flex items-center gap-3">
@@ -226,6 +226,6 @@ export function MobileOfferDetail() {
           }}
         />
       )}
-    </MobileShell>
+    </>
   );
 }

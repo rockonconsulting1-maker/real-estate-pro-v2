@@ -56,6 +56,24 @@ export function DesktopSellerDetail() {
     enabled: !!contactId,
   });
 
+  const pipeline = PipelineRegistry.byName('seller');
+  const stage = pipeline?.stages?.find(s => s.id === opp?.pipelineStageId);
+  const stageIndex = pipeline?.stages?.findIndex(s => s.id === opp?.pipelineStageId) ?? 0;
+  const nextStage = pipeline?.stages?.[stageIndex + 1];
+
+  const advanceStageMutation = useMutation({
+    mutationFn: (stageId: string) => opportunitiesService.update(opp!.id, { pipelineStageId: stageId }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ghl.opp(opp!.id) });
+      queryClient.invalidateQueries({ queryKey: ghl.opps() });
+      toast.success('Stage advanced');
+      setAdvanceStageOpen(false);
+    },
+    onError: () => {
+      toast.error('Failed to advance stage');
+    }
+  });
+
   const isLoading = oppLoading || contactLoading;
 
   if (isLoading) {
@@ -77,24 +95,6 @@ export function DesktopSellerDetail() {
   if (!opp || !contact) {
     return <EmptyState title="Not Found" description="Seller details could not be loaded." />;
   }
-
-  const pipeline = PipelineRegistry.byName('seller');
-  const stage = pipeline?.stages?.find(s => s.id === opp.pipelineStageId);
-  const stageIndex = pipeline?.stages?.findIndex(s => s.id === opp.pipelineStageId) ?? 0;
-  const nextStage = pipeline?.stages?.[stageIndex + 1];
-
-  const advanceStageMutation = useMutation({
-    mutationFn: (stageId: string) => opportunitiesService.update(opp.id, { pipelineStageId: stageId }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ghl.opp(opp.id) });
-      queryClient.invalidateQueries({ queryKey: ghl.opps() });
-      toast.success('Stage advanced');
-      setAdvanceStageOpen(false);
-    },
-    onError: () => {
-      toast.error('Failed to advance stage');
-    }
-  });
 
   return (
     <div className="flex flex-col h-full bg-background border-l border-border w-[600px] shrink-0">
@@ -181,7 +181,7 @@ export function DesktopSellerDetail() {
               <SellerOffersTab contact={contact} opp={opp} />
             </TabsContent>
             <TabsContent value="showings" className="m-0">
-              <SellerShowingsTab contact={contact} opp={opp} appointments={appointments || []} />
+              <SellerShowingsTab contact={contact} opp={opp} appointments={(appointments || []) as any[]} />
             </TabsContent>
             <TabsContent value="marketing" className="m-0">
               <SellerMarketingTab />

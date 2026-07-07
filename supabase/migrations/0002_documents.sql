@@ -16,6 +16,3 @@ alter table public.documents enable row level security;
 
 create policy "own documents" on public.documents for all
   using (auth.uid() = user_id) with check (auth.uid() = user_id);
-
--- Note: The 'documents' storage bucket needs to be created in the Supabase dashboard
--- and RLS policies set up for it to allow authenticated users to upload/read their own files.

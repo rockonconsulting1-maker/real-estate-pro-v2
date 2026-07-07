@@ -4,7 +4,7 @@ import { ghl } from '@/lib/queryKeys';
 import { usersService } from '@/lib/ghl/services/users';
 import { opportunitiesService } from '@/lib/ghl/services/opportunities';
 import { tasksGlobalService } from '@/lib/ghl/services/tasksGlobal';
-import { DesktopShell } from '@/components/desktop/shell';
+
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -93,7 +93,7 @@ export function DesktopTeamView() {
   };
 
   return (
-    <DesktopShell>
+    <>
       <div className="p-6 max-w-7xl mx-auto space-y-6">
         <div>
           <h1 className="text-page-title-desktop">Team Directory</h1>
@@ -227,6 +227,6 @@ export function DesktopTeamView() {
           </DialogContent>
         </Dialog>
       </div>
-    </DesktopShell>
+    </>
   );
 }

@@ -74,7 +74,14 @@ export function Confirm() {
       </CardHeader>
       <CardContent className="px-0 lg:px-6 pb-0 lg:pb-6 space-y-6">
         {status === 'success' && (
-          <Button onClick={() => navigate('/')} className="w-full">
+          <Button onClick={() => {
+            const next = searchParams.get('next');
+            if (next && next.startsWith('/') && !next.startsWith('//') && !next.startsWith('/auth')) {
+              navigate(next, { replace: true });
+            } else {
+              navigate('/');
+            }
+          }} className="w-full">
             Continue to dashboard
           </Button>
         )}

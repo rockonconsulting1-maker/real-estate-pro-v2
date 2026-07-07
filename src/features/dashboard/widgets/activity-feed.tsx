@@ -31,7 +31,7 @@ export function ActivityFeedWidget() {
       },
       {
         queryKey: ghl.opps({ recent: '7d' }),
-        queryFn: () => opportunitiesService.search({ filters: [] }), // Ideally filter by updatedAt
+        queryFn: () => opportunitiesService.search({ limit: 50 }), // Fetch recent opportunities
         staleTime: STALE_TIMES.LIST,
       },
       {

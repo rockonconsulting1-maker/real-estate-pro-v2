@@ -3,10 +3,10 @@ import { useNavigate } from 'react-router-dom';
 import { ghl } from '@/lib/queryKeys';
 import { mlsPropertiesService } from '@/lib/ghl/services';
 import { cleanCustomObjectFields } from '@/types/ghl';
-import { MobileShell } from '@/components/mobile/shell';
+
 import { Input } from '@/components/ui/input';
-import { Search, Filter } from 'lucide-react';
-import { Money } from '@/components/shared/primitives';
+import { Search, Filter, Map, List } from 'lucide-react';
+import { Money, MapPlaceholder } from '@/components/shared/primitives';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ErrorState, EmptyState } from '@/components/shared/states';
 import { Card, CardContent } from '@/components/ui/card';
@@ -19,6 +19,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 export function MobileMlsView() {
   const navigate = useNavigate();
   const [search, setSearch] = useState('');
+  const [view, setView] = useState<'list' | 'map'>('list');
   const debouncedSearch = useDebounce(search, 300);
   
   // Filters
@@ -30,20 +31,19 @@ export function MobileMlsView() {
 
   const { data, isLoading, error, refetch, fetchNextPage, hasNextPage, isFetchingNextPage } = useGhlInfinite(
     ghl.records('properties', { query: debouncedSearch, propertyType, status, beds, baths, sort }) as unknown as any[],
-    async (pageParam) => {
-      const filters = [];
-      if (propertyType !== 'all') filters.push({ field: 'property_type', operator: 'eq', value: propertyType });
-      if (status !== 'all') filters.push({ field: 'property_status', operator: 'eq', value: status });
-      if (beds !== 'all') filters.push({ field: 'property_beds', operator: 'gte', value: Number(beds) });
-      if (baths !== 'all') filters.push({ field: 'property_baths', operator: 'gte', value: Number(baths) });
-
+    async (pageParam: string) => {
       const res = await mlsPropertiesService.search({ 
         query: debouncedSearch, 
-        filters,
-        searchAfter: pageParam || undefined
+        pageLimit: 100,
+        searchAfter: pageParam ? [pageParam] : undefined
       });
       
       let records = res.records.map(r => cleanCustomObjectFields(r, 'properties'));
+      
+      if (propertyType !== 'all') records = records.filter(r => r.property_type === propertyType);
+      if (status !== 'all') records = records.filter(r => r.property_status === status);
+      if (beds !== 'all') records = records.filter(r => (r.property_beds || 0) >= Number(beds));
+      if (baths !== 'all') records = records.filter(r => (r.property_baths || 0) >= Number(baths));
       
       // Client-side sort for now (will only sort current page, which is a limitation without backend sort)
       if (sort === 'price_asc') records.sort((a, b) => (a.property_price || 0) - (b.property_price || 0));
@@ -52,7 +52,7 @@ export function MobileMlsView() {
 
       return {
         data: records,
-        nextCursor: res.meta?.nextPageUrl ? res.meta.startAfter : null
+        nextCursor: (res.meta?.nextPageUrl ? res.meta.startAfter : "") as string
       };
     }
   );
@@ -61,7 +61,7 @@ export function MobileMlsView() {
   const totalCount = data?.pages[0]?.data.length ? 'Results found' : '0 results'; // We don't have total from infinite easily
 
   return (
-    <MobileShell>
+    <div className="flex flex-col h-full bg-background overflow-hidden">
       <div className="flex flex-col h-full">
         <div className="p-4 space-y-3 bg-background border-b z-10 sticky top-0">
           <div className="flex space-x-2">
@@ -75,6 +75,10 @@ export function MobileMlsView() {
               />
             </div>
             
+            <Button variant="outline" size="icon" onClick={() => setView(view === 'list' ? 'map' : 'list')} className="h-10 w-10 shrink-0">
+              {view === 'list' ? <Map className="h-4 w-4" /> : <List className="h-4 w-4" />}
+            </Button>
+
             <Sheet>
               <SheetTrigger asChild>
                 <Button variant="outline" size="icon" className="h-10 w-10 shrink-0">
@@ -169,29 +173,37 @@ export function MobileMlsView() {
             <EmptyState title="No properties found" description="Adjust filters or try a different search." icon={Search} />
           ) : (
             <>
-              {flatData.map((property: any) => (
-                <PropertyCard 
-                  key={property.id} 
-                  property={property} 
-                  onClick={() => navigate(`/mls/${property.id}`)} 
-                />
-              ))}
-              
-              {hasNextPage && (
-                <Button 
-                  variant="outline" 
-                  className="w-full mt-4" 
-                  onClick={() => fetchNextPage()}
-                  disabled={isFetchingNextPage}
-                >
-                  {isFetchingNextPage ? 'Loading more...' : 'Load More'}
-                </Button>
+              {view === 'list' ? (
+                <>
+                  {flatData.map((property: any) => (
+                    <PropertyCard 
+                      key={property.id} 
+                      property={property} 
+                      onClick={() => navigate(`/mls/${property.id}`)} 
+                    />
+                  ))}
+                  
+                  {hasNextPage && (
+                    <Button 
+                      variant="outline" 
+                      className="w-full mt-4" 
+                      onClick={() => fetchNextPage()}
+                      disabled={isFetchingNextPage}
+                    >
+                      {isFetchingNextPage ? 'Loading more...' : 'Load More'}
+                    </Button>
+                  )}
+                </>
+              ) : (
+                <div className="h-full w-full min-h-[400px] relative">
+                  <MapPlaceholder className="absolute inset-0" />
+                </div>
               )}
             </>
           )}
         </div>
       </div>
-    </MobileShell>
+    </div>
   );
 }
 

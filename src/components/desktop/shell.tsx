@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { NavLink, useLocation } from 'react-router-dom';
+import { NavLink, useLocation, useNavigate } from 'react-router-dom';
+import { useAuth } from '@/app/auth-provider';
 import { Search, Bell, Plus, Menu, ChevronLeft, ChevronRight, LogOut, User, Settings as SettingsIcon } from 'lucide-react';
 import { NAVIGATION_ITEMS } from '@/lib/navigation';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -29,7 +30,9 @@ export function DesktopShell({ children }: { children: React.ReactNode }) {
   });
   const [searchOpen, setSearchOpen] = useState(false);
   const location = useLocation();
+  const navigate = useNavigate();
   const { openModal } = useQuickAdd();
+  const { signOut } = useAuth();
 
   useEffect(() => {
     localStorage.setItem('rc-crm-sidebar-collapsed', isCollapsed.toString());
@@ -171,16 +174,16 @@ export function DesktopShell({ children }: { children: React.ReactNode }) {
               <DropdownMenuContent align="end" className="w-56">
                 <DropdownMenuLabel>My Account</DropdownMenuLabel>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem>
+                <DropdownMenuItem onClick={() => navigate('/settings/profile')}>
                   <User className="mr-2 h-4 w-4" />
                   <span>Profile</span>
                 </DropdownMenuItem>
-                <DropdownMenuItem>
+                <DropdownMenuItem onClick={() => navigate('/settings')}>
                   <SettingsIcon className="mr-2 h-4 w-4" />
                   <span>Settings</span>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem className="text-destructive focus:text-destructive focus:bg-destructive-soft">
+                <DropdownMenuItem className="text-destructive focus:text-destructive focus:bg-destructive-soft" onClick={() => signOut()}>
                   <LogOut className="mr-2 h-4 w-4" />
                   <span>Sign out</span>
                 </DropdownMenuItem>

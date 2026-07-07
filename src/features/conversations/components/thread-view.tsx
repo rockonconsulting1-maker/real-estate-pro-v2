@@ -1,20 +1,23 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ghl } from '@/lib/queryKeys';
 import { conversationsService } from '@/lib/ghl/services/conversations';
 import { contactsService } from '@/lib/ghl/services/contacts';
+import { mediasService, templatesService, customValuesService } from '@/lib/ghl/services/misc';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { Send, Phone, ArrowLeft, Paperclip, MoreVertical, MessageSquare, Mail, MessageCircle } from 'lucide-react';
+import { Send, Phone, ArrowLeft, Paperclip, MoreVertical, MessageSquare, Mail, MessageCircle, FileText, Loader2, X } from 'lucide-react';
 import { format, isSameDay, isToday, isYesterday } from 'date-fns';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ErrorState } from '@/components/shared/states';
 import { cn } from '@/lib/utils';
 import { useNavigate } from 'react-router-dom';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Textarea } from '@/components/ui/textarea';
+import { toast } from 'sonner';
 
 interface ThreadViewProps {
   conversationId: string;
@@ -26,8 +29,11 @@ export function ThreadView({ conversationId, isMobile }: ThreadViewProps) {
   const queryClient = useQueryClient();
   const [newMessage, setNewMessage] = useState('');
   const [subject, setSubject] = useState('');
-  const [channel, setChannel] = useState<number>(1); // 1=SMS, 2=Email, 4=WhatsApp
+  const [channel, setChannel] = useState<'SMS' | 'Email' | 'WhatsApp'>('SMS');
+  const [attachments, setAttachments] = useState<{file: File, url?: string}[]>([]);
+  const [isUploading, setIsUploading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Mark as read when opening
   useEffect(() => {
@@ -44,7 +50,7 @@ export function ThreadView({ conversationId, isMobile }: ThreadViewProps) {
     refetchInterval: 15000, // Poll every 15s
   });
 
-  const messages = data?.messages || [];
+  const messages = useMemo(() => data?.messages || [], [data?.messages]);
   
   // Try to get contact ID from messages or conversation list
   const { data: convsData } = useQuery({
@@ -63,11 +69,18 @@ export function ThreadView({ conversationId, isMobile }: ThreadViewProps) {
     staleTime: 60000,
   });
 
+  const { data: templates } = useQuery({
+    queryKey: ['ghl', 'templates'],
+    queryFn: () => templatesService.list(),
+    staleTime: 300000,
+  });
+
   const sendMutation = useMutation({
-    mutationFn: (body: string) => conversationsService.sendMessage(conversationId, {
+    mutationFn: (body: string) => conversationsService.sendMessage({
       type: channel,
-      message: body,
-      ...(channel === 2 && subject ? { subject } : {})
+      contactId: contactId || '',
+      attachments: attachments.map(a => a.url).filter(Boolean),
+      ...(channel === 'Email' ? { html: body, subject } : { message: body })
     }),
     onMutate: async (newBody) => {
       await queryClient.cancelQueries({ queryKey: ghl.messages(conversationId) });
@@ -75,8 +88,8 @@ export function ThreadView({ conversationId, isMobile }: ThreadViewProps) {
       
       const optimisticMsg = {
         id: `temp-${Date.now()}`,
-        type: channel,
-        messageType: channel === 2 ? 'Email' : 'SMS',
+        type: channel === 'SMS' ? 1 : channel === 'Email' ? 2 : 4,
+        messageType: channel,
         body: newBody,
         direction: 'outbound',
         status: 'pending',
@@ -100,6 +113,7 @@ export function ThreadView({ conversationId, isMobile }: ThreadViewProps) {
     onSuccess: () => {
       setNewMessage('');
       setSubject('');
+      setAttachments([]);
       queryClient.invalidateQueries({ queryKey: ghl.messages(conversationId) });
       queryClient.invalidateQueries({ queryKey: ghl.conversations() });
     }
@@ -107,8 +121,46 @@ export function ThreadView({ conversationId, isMobile }: ThreadViewProps) {
 
   const handleSend = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newMessage.trim()) return;
+    if (!newMessage.trim() || !contactId) return;
     sendMutation.mutate(newMessage);
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+    
+    setIsUploading(true);
+    try {
+      const newAttachments = [...attachments];
+      for (const file of files) {
+        const url = await mediasService.upload(file);
+        newAttachments.push({ file, url });
+      }
+      setAttachments(newAttachments);
+    } catch (err) {
+      toast.error('Failed to upload attachment');
+    } finally {
+      setIsUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const insertTemplate = (templateBody: string) => {
+    // In a full implementation, we'd fetch customValues and string-replace {{custom_values.xxx}}
+    // For now, insert as-is.
+    setNewMessage(prev => prev + (prev ? '\n' : '') + templateBody);
+  };
+
+  const handleLogCall = () => {
+    if (!contactId) return;
+    conversationsService.sendMessage({
+      type: 'Call',
+      contactId,
+      message: 'Call Logged manually'
+    }).then(() => {
+      queryClient.invalidateQueries({ queryKey: ghl.messages(conversationId) });
+      queryClient.invalidateQueries({ queryKey: ghl.conversations() });
+    }).catch(console.error);
   };
 
   // Auto-scroll to bottom
@@ -179,9 +231,16 @@ export function ThreadView({ conversationId, isMobile }: ThreadViewProps) {
           }}>
             <Phone className="h-4 w-4" />
           </Button>
-          <Button variant="ghost" size="icon">
-            <MoreVertical className="h-4 w-4" />
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon">
+                <MoreVertical className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={handleLogCall}>Log Call</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
 
@@ -280,7 +339,7 @@ export function ThreadView({ conversationId, isMobile }: ThreadViewProps) {
       {/* Composer */}
       <div className="p-3 bg-surface border-t">
         <form onSubmit={handleSend} className="flex flex-col gap-2">
-          {channel === 2 && (
+          {channel === 'Email' && (
             <Input 
               placeholder="Subject..." 
               value={subject}
@@ -289,30 +348,42 @@ export function ThreadView({ conversationId, isMobile }: ThreadViewProps) {
             />
           )}
           <div className="flex items-end gap-2 bg-muted/30 p-1 pl-2 rounded-xl border focus-within:ring-1 focus-within:ring-ring focus-within:border-brand">
-            <Select value={channel.toString()} onValueChange={(v) => setChannel(parseInt(v))}>
+            <Select value={channel} onValueChange={(v: any) => setChannel(v)}>
               <SelectTrigger className="w-auto border-none bg-transparent shadow-none focus:ring-0 px-2 h-9">
                 <div className="flex items-center gap-1.5 text-muted-foreground">
-                  {channel === 1 ? <MessageSquare className="h-4 w-4" /> : 
-                   channel === 2 ? <Mail className="h-4 w-4" /> : 
+                  {channel === 'SMS' ? <MessageSquare className="h-4 w-4" /> : 
+                   channel === 'Email' ? <Mail className="h-4 w-4" /> : 
                    <MessageCircle className="h-4 w-4" />}
                 </div>
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="1"><div className="flex items-center gap-2"><MessageSquare className="h-4 w-4"/> SMS</div></SelectItem>
-                <SelectItem value="2"><div className="flex items-center gap-2"><Mail className="h-4 w-4"/> Email</div></SelectItem>
-                <SelectItem value="4"><div className="flex items-center gap-2"><MessageCircle className="h-4 w-4"/> WhatsApp</div></SelectItem>
+                <SelectItem value="SMS"><div className="flex items-center gap-2"><MessageSquare className="h-4 w-4"/> SMS</div></SelectItem>
+                <SelectItem value="Email"><div className="flex items-center gap-2"><Mail className="h-4 w-4"/> Email</div></SelectItem>
+                <SelectItem value="WhatsApp"><div className="flex items-center gap-2"><MessageCircle className="h-4 w-4"/> WhatsApp</div></SelectItem>
               </SelectContent>
             </Select>
             
             <div className="flex-1 relative py-1">
+              {attachments.length > 0 && (
+                <div className="flex flex-wrap gap-2 mb-2">
+                  {attachments.map((att, i) => (
+                    <div key={i} className="flex items-center gap-1 bg-surface border rounded text-xs px-2 py-1">
+                      <span className="truncate max-w-[100px]">{att.file.name}</span>
+                      <button type="button" onClick={() => setAttachments(prev => prev.filter((_, idx) => idx !== i))} className="text-muted-foreground hover:text-foreground">
+                        <X className="h-3 w-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
               <Textarea 
-                placeholder={channel === 2 ? "Type an email..." : "Type a message..."} 
+                placeholder={channel === 'Email' ? "Type an email..." : "Type a message..."} 
                 value={newMessage}
                 onChange={(e) => setNewMessage(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault();
-                    if (newMessage.trim()) handleSend(e);
+                    if (newMessage.trim() || attachments.length) handleSend(e);
                   }
                 }}
                 className="min-h-[36px] max-h-[120px] resize-none bg-transparent border-none shadow-none focus-visible:ring-0 p-1 text-sm"
@@ -321,14 +392,35 @@ export function ThreadView({ conversationId, isMobile }: ThreadViewProps) {
             </div>
             
             <div className="flex items-center gap-1 pb-1 pr-1">
-              <Button type="button" variant="ghost" size="icon" className="h-8 w-8 rounded-full text-muted-foreground hover:text-foreground">
-                <Paperclip className="h-4 w-4" />
+              <input type="file" ref={fileInputRef} className="hidden" multiple onChange={handleFileChange} />
+              
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button type="button" variant="ghost" size="icon" className="h-8 w-8 rounded-full text-muted-foreground hover:text-foreground">
+                    <FileText className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56 max-h-64 overflow-y-auto">
+                  {templates?.length ? (
+                    templates.map((t: any) => (
+                      <DropdownMenuItem key={t.id} onClick={() => insertTemplate(t.body)}>
+                        {t.name}
+                      </DropdownMenuItem>
+                    ))
+                  ) : (
+                    <div className="p-2 text-sm text-muted-foreground text-center">No templates</div>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+
+              <Button type="button" variant="ghost" size="icon" onClick={() => fileInputRef.current?.click()} className="h-8 w-8 rounded-full text-muted-foreground hover:text-foreground">
+                {isUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Paperclip className="h-4 w-4" />}
               </Button>
               <Button 
                 type="submit" 
                 size="icon" 
                 className="h-8 w-8 rounded-full shrink-0 bg-brand text-brand-foreground hover:bg-brand/90" 
-                disabled={!newMessage.trim() || sendMutation.isPending}
+                disabled={(!newMessage.trim() && !attachments.length) || sendMutation.isPending || isUploading}
               >
                 <Send className="h-4 w-4" />
               </Button>

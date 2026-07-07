@@ -3,13 +3,13 @@ import { useQuery } from '@tanstack/react-query';
 import { sb, ghl } from '@/lib/queryKeys';
 import { opportunitiesService } from '@/lib/ghl/services/opportunities';
 import { contactsService } from '@/lib/ghl/services/contacts';
-import { objectsService } from '@/lib/ghl/services/objects';
-import { DesktopShell } from '@/components/desktop/shell';
+import { objectsService, OBJECT_KEYS } from '@/lib/ghl/services/objects';
+
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Download } from 'lucide-react';
+import { Download, AlertTriangle } from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
 import { useAuth } from '@/app/auth-provider';
 import {
@@ -35,22 +35,42 @@ export function DesktopReportsView() {
     enabled: !!user?.id,
   });
 
-  const { data: oppsData, isLoading: oppsLoading } = useQuery({
-    queryKey: ghl.opps({ limit: 100 }),
-    queryFn: () => opportunitiesService.search({ limit: 100 }),
+  const { data: reportData, isLoading } = useQuery({
+    queryKey: ['reports', 'all-data'],
+    queryFn: async () => {
+      const [opps, contacts, listings] = await Promise.all([
+        import('@/hooks/use-query-helpers').then(m => m.fetchAllPages(
+          async (cursor?: string) => {
+            const res = await opportunitiesService.search({ limit: 100, page: cursor ? parseInt(cursor) : 1 });
+            return { items: res.opportunities || [], nextCursor: res.opportunities?.length === 100 ? String((cursor ? parseInt(cursor) : 1) + 1) : undefined };
+          }
+        )),
+        import('@/hooks/use-query-helpers').then(m => m.fetchAllPages(
+          async (cursor?: string) => {
+            const res = await contactsService.search({ limit: 100, page: cursor ? parseInt(cursor) : 1 });
+            return { items: res.contacts || [], nextCursor: res.contacts?.length === 100 ? String((cursor ? parseInt(cursor) : 1) + 1) : undefined };
+          }
+        )),
+        import('@/hooks/use-query-helpers').then(m => m.fetchAllPages(
+          async (cursor?: string) => {
+            const res = await objectsService.searchRecords(OBJECT_KEYS.listings, { pageLimit: 100, searchAfter: cursor ? [cursor] : undefined });
+            return { items: res.records || [], nextCursor: res.meta?.nextPageToken as string | undefined };
+          }
+        ))
+      ]);
+      return {
+        opportunities: opps.items,
+        contacts: contacts.items,
+        listings: listings.items,
+        hitCap: opps.hitCap || contacts.hitCap || listings.hitCap
+      };
+    },
+    staleTime: 5 * 60 * 1000 // 5 minutes
   });
 
-  const { data: contactsData, isLoading: contactsLoading } = useQuery({
-    queryKey: ghl.contacts({ limit: 100 }),
-    queryFn: () => contactsService.search({ limit: 100 }),
-  });
-
-  const { data: listingsData, isLoading: listingsLoading } = useQuery({
-    queryKey: ghl.records('custom_objects.my_listings', { pageLimit: 100 }),
-    queryFn: () => objectsService.searchRecords('custom_objects.my_listings', { pageLimit: 100 }),
-  });
-
-  const isLoading = oppsLoading || contactsLoading || listingsLoading;
+  const oppsData = reportData;
+  const contactsData = reportData;
+  const listingsData = reportData;
 
   const dateInterval = useMemo(() => {
     const now = new Date();
@@ -65,8 +85,9 @@ export function DesktopReportsView() {
   const filteredOpps = useMemo(() => {
     if (!oppsData?.opportunities) return [];
     return oppsData.opportunities.filter(opp => {
-      if (!opp.createdAt) return false;
-      return isWithinInterval(parseISO(opp.createdAt), dateInterval);
+      const dateStr = opp.status === 'won' ? (opp.updatedAt || opp.createdAt) : opp.createdAt;
+      if (!dateStr) return false;
+      return isWithinInterval(parseISO(dateStr), dateInterval);
     });
   }, [oppsData, dateInterval]);
 
@@ -81,7 +102,8 @@ export function DesktopReportsView() {
   const volumeByMonth = useMemo(() => {
     const months: Record<string, number> = {};
     filteredOpps.filter(o => o.status === 'won').forEach(o => {
-      const month = format(parseISO(o.createdAt!), 'MMM');
+      const dateStr = o.updatedAt || o.createdAt!;
+      const month = format(parseISO(dateStr), 'MMM');
       months[month] = (months[month] || 0) + (o.monetaryValue || 0);
     });
     return Object.entries(months).map(([name, volume]) => ({ name, volume }));
@@ -100,7 +122,8 @@ export function DesktopReportsView() {
         if (o.status === 'won') closed++;
         else {
           const pos = registry.stagePosition(o.pipelineStageId);
-          if (pos >= 3) underContract++; // Approximating "Under Contract"
+          const ucPos = registry.underContractPosition(o.pipelineId);
+          if (ucPos !== -1 && pos >= ucPos) underContract++;
         }
       }
     });
@@ -126,9 +149,9 @@ export function DesktopReportsView() {
 
   // Avg DOM
   const avgDOM = useMemo(() => {
-    if (!listingsData?.records) return 0;
+    if (!listingsData?.listings) return 0;
     let sum = 0, count = 0;
-    listingsData.records.forEach((r: any) => {
+    listingsData.listings.forEach((r: any) => {
       if (r.dom) { sum += Number(r.dom); count++; }
     });
     return count ? Math.round(sum / count) : 0;
@@ -151,7 +174,7 @@ export function DesktopReportsView() {
   };
 
   return (
-    <DesktopShell>
+    <>
       <div className="p-6 max-w-7xl mx-auto space-y-6">
         <div className="flex items-center justify-between">
           <div>
@@ -175,6 +198,13 @@ export function DesktopReportsView() {
             </Button>
           </div>
         </div>
+
+        {(reportData as any)?.hitCap && (
+          <div className="bg-amber-50 border border-amber-200 text-amber-800 px-4 py-2 rounded-lg mb-6 text-sm flex items-center gap-2">
+            <AlertTriangle className="h-4 w-4" />
+            Note: Analytics are based on the first 1,000 records per category.
+          </div>
+        )}
 
         {isLoading ? (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -282,6 +312,6 @@ export function DesktopReportsView() {
           </div>
         )}
       </div>
-    </DesktopShell>
+    </>
   );
 }

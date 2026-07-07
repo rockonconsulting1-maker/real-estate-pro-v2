@@ -4,11 +4,11 @@ import { useQuery } from '@tanstack/react-query';
 import { ghl } from '@/lib/queryKeys';
 import { myListingsService } from '@/lib/ghl/services';
 import { cleanCustomObjectFields } from '@/types/ghl';
-import { MobileShell } from '@/components/mobile/shell';
+
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Search, Filter, Plus } from 'lucide-react';
-import { Money, StageDot } from '@/components/shared/primitives';
+import { Search, Filter, Plus, Map, List } from 'lucide-react';
+import { Money, StageDot, MapPlaceholder } from '@/components/shared/primitives';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ErrorState, EmptyState } from '@/components/shared/states';
 import { Card, CardContent } from '@/components/ui/card';
@@ -20,83 +20,91 @@ export function MobileListingsView() {
   const [search, setSearch] = useState('');
   const [stageFilter, setStageFilter] = useState('all');
   const [newOpen, setNewOpen] = useState(false);
+  const [view, setView] = useState<'list' | 'map'>('list');
 
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ghl.records('my_listings', { query: search, stage: stageFilter }),
     queryFn: async () => {
-      const filters = [];
+      const res = await myListingsService.search({ query: search, pageLimit: 100 });
+      let records = res.records.map(r => cleanCustomObjectFields(r, 'my_listings'));
       if (stageFilter !== 'all') {
-        filters.push({ field: 'listing_stage', operator: 'eq', value: stageFilter });
+        records = records.filter(r => r.listing_stage === stageFilter || r.status === stageFilter);
       }
-      const res = await myListingsService.search({ query: search, filters });
-      return res.records.map(r => cleanCustomObjectFields(r, 'my_listings'));
+      return records;
     }
   });
 
   return (
-    <MobileShell>
-      <div className="flex flex-col h-full">
-        <div className="p-4 space-y-3 shrink-0 bg-background z-10 border-b">
-          <div className="flex items-center space-x-2">
-            <div className="relative flex-1">
-              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input 
-                placeholder="Search listings..." 
-                className="pl-9 bg-secondary/50 border-transparent"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-              />
-            </div>
-            <Button size="icon" onClick={() => setNewOpen(true)} className="shrink-0 rounded-full h-10 w-10">
-              <Plus className="h-5 w-5" />
-            </Button>
+    <div className="flex flex-col h-full bg-background">
+      <div className="p-4 space-y-3 shrink-0 bg-background z-10 border-b">
+        <div className="flex items-center space-x-2">
+          <div className="relative flex-1">
+            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input 
+              placeholder="Search listings..." 
+              className="pl-9 bg-secondary/50 border-transparent"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
           </div>
-          
-          <ScrollArea className="w-full whitespace-nowrap pb-2">
-            <div className="flex space-x-2">
+          <Button variant="outline" size="icon" onClick={() => setView(view === 'list' ? 'map' : 'list')} className="shrink-0 rounded-full h-10 w-10">
+            {view === 'list' ? <Map className="h-4 w-4" /> : <List className="h-4 w-4" />}
+          </Button>
+          <Button size="icon" onClick={() => setNewOpen(true)} className="shrink-0 rounded-full h-10 w-10">
+            <Plus className="h-5 w-5" />
+          </Button>
+        </div>
+        
+        <ScrollArea className="w-full whitespace-nowrap pb-2">
+          <div className="flex space-x-2">
+            <Button 
+              variant={stageFilter === 'all' ? 'default' : 'secondary'} 
+              size="sm" 
+              className="rounded-full h-8 px-4"
+              onClick={() => setStageFilter('all')}
+            >
+              All
+            </Button>
+            {['Coming Soon', 'Active', 'Pending', 'Sold'].map(stage => (
               <Button 
-                variant={stageFilter === 'all' ? 'default' : 'secondary'} 
+                key={stage}
+                variant={stageFilter === stage ? 'default' : 'secondary'} 
                 size="sm" 
                 className="rounded-full h-8 px-4"
-                onClick={() => setStageFilter('all')}
+                onClick={() => setStageFilter(stage)}
               >
-                All
+                {stage}
               </Button>
-              {['Coming Soon', 'Active', 'Pending', 'Sold'].map(stage => (
-                <Button 
-                  key={stage}
-                  variant={stageFilter === stage ? 'default' : 'secondary'} 
-                  size="sm" 
-                  className="rounded-full h-8 px-4"
-                  onClick={() => setStageFilter(stage)}
-                >
-                  {stage}
-                </Button>
-              ))}
-            </div>
-            <ScrollBar orientation="horizontal" className="hidden" />
-          </ScrollArea>
-        </div>
+            ))}
+          </div>
+          <ScrollBar orientation="horizontal" className="hidden" />
+        </ScrollArea>
+      </div>
 
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
-          {isLoading ? (
-            <>
-              <Skeleton className="h-[280px] rounded-xl w-full" />
-              <Skeleton className="h-[280px] rounded-xl w-full" />
-            </>
-          ) : error ? (
-            <ErrorState message="Failed to load listings" onRetry={() => refetch()} />
-          ) : !data || data.length === 0 ? (
-            <EmptyState title="No listings found" description="Adjust filters or add a new listing." icon={Filter} />
-          ) : (
+      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        {isLoading ? (
+          <>
+            <Skeleton className="h-[280px] rounded-xl w-full" />
+            <Skeleton className="h-[280px] rounded-xl w-full" />
+          </>
+        ) : error ? (
+          <ErrorState message="Failed to load listings" onRetry={() => refetch()} />
+        ) : !data || data.length === 0 ? (
+          <EmptyState title="No listings found" description="Adjust filters or add a new listing." icon={Filter} />
+        ) : (
+          view === 'list' ? (
             data.map(listing => (
               <MobileListingCard key={listing.id} listing={listing} onClick={() => navigate(`/listings/${listing.id}`)} />
             ))
-          )}
-        </div>
+          ) : (
+            <div className="h-full w-full min-h-[400px] relative">
+              <MapPlaceholder className="absolute inset-0" />
+            </div>
+          )
+        )}
       </div>
       {newOpen && <NewListingModal open={newOpen} onOpenChange={setNewOpen} />}
-    </MobileShell>
+    </div>
   );
 }
 
@@ -126,7 +134,6 @@ function MobileListingCard({ listing, onClick }: { listing: any, onClick?: () =>
           </p>
         </div>
 
-        {/* Stage tracking strip */}
         <div className="pt-2">
           <div className="flex justify-between mb-1.5">
             <span className="text-xs font-medium text-muted-foreground">Progress</span>

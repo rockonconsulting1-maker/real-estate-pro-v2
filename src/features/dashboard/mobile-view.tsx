@@ -7,6 +7,7 @@ import { NeedsAttentionWidget } from './widgets/needs-attention';
 import { NewLeadsWidget } from './widgets/new-leads';
 import { PendingOffersWidget } from './widgets/pending-offers';
 import { ActivityFeedWidget } from './widgets/activity-feed';
+import { WidgetErrorBoundary } from '@/components/shared/error-boundary';
 import { GlobalSearch } from '@/components/shared/global-search';
 import { NotificationsFeed } from '@/components/shared/notifications-feed';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
@@ -56,17 +57,17 @@ export function DashboardMobileView() {
           <span>Search contacts, leads, listings...</span>
         </button>
 
-        <NextUpWidget />
+        <WidgetErrorBoundary><NextUpWidget /></WidgetErrorBoundary>
         
-        <KpiGridWidget />
+        <WidgetErrorBoundary><KpiGridWidget /></WidgetErrorBoundary>
         
-        <NeedsAttentionWidget />
+        <WidgetErrorBoundary><NeedsAttentionWidget /></WidgetErrorBoundary>
         
-        <NewLeadsWidget />
+        <WidgetErrorBoundary><NewLeadsWidget /></WidgetErrorBoundary>
         
-        <PendingOffersWidget />
+        <WidgetErrorBoundary><PendingOffersWidget /></WidgetErrorBoundary>
         
-        <ActivityFeedWidget />
+        <WidgetErrorBoundary><ActivityFeedWidget /></WidgetErrorBoundary>
       </div>
 
       <GlobalSearch open={searchOpen} onOpenChange={setSearchOpen} />

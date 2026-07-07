@@ -175,3 +175,64 @@ export const ghlUserSchema = z.object({
 }).passthrough();
 
 export type GhlUser = z.infer<typeof ghlUserSchema>;
+
+// Associations
+export const associationKeySchema = z.object({
+  id: z.string(),
+  name: z.string(),
+}).passthrough();
+export type AssociationKey = z.infer<typeof associationKeySchema>;
+
+export const relationSchema = z.object({
+  id: z.string(),
+  contactId: z.string().optional(),
+  opportunityId: z.string().optional(),
+  objectId: z.string().optional(),
+  recordId: z.string().optional(),
+  linkedRecordId: z.string().optional(),
+}).passthrough();
+export type Relation = z.infer<typeof relationSchema>;
+
+// Misc
+export const customFieldSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  dataType: z.string(),
+  placeholder: z.string().optional().nullable(),
+}).passthrough();
+export type CustomField = z.infer<typeof customFieldSchema>;
+
+export const customValueSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  value: z.string(),
+}).passthrough();
+export type CustomValue = z.infer<typeof customValueSchema>;
+
+export const tagSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+}).passthrough();
+export type Tag = z.infer<typeof tagSchema>;
+
+export const mediaFileSchema = z.object({
+  id: z.string(),
+  url: z.string(),
+  name: z.string(),
+  type: z.string(),
+}).passthrough();
+export type MediaFile = z.infer<typeof mediaFileSchema>;
+
+export const templateSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  body: z.string().optional(),
+}).passthrough();
+export type Template = z.infer<typeof templateSchema>;
+
+export const locationSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  companyId: z.string().optional(),
+}).passthrough();
+export type Location = z.infer<typeof locationSchema>;

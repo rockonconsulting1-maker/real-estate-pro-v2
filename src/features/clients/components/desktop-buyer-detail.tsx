@@ -58,6 +58,24 @@ export function DesktopBuyerDetail() {
     enabled: !!contactId,
   });
 
+  const pipeline = PipelineRegistry.byName('buyer');
+  const stage = pipeline?.stages?.find(s => s.id === opp?.pipelineStageId);
+  const stageIndex = pipeline?.stages?.findIndex(s => s.id === opp?.pipelineStageId) ?? 0;
+  const nextStage = pipeline?.stages?.[stageIndex + 1];
+
+  const advanceStageMutation = useMutation({
+    mutationFn: (stageId: string) => opportunitiesService.update(opp!.id, { pipelineStageId: stageId }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ghl.opp(opp!.id) });
+      queryClient.invalidateQueries({ queryKey: ghl.opps() });
+      toast.success('Stage advanced');
+      setAdvanceStageOpen(false);
+    },
+    onError: () => {
+      toast.error('Failed to advance stage');
+    }
+  });
+
   const isLoading = oppLoading || contactLoading;
 
   if (isLoading) {
@@ -79,24 +97,6 @@ export function DesktopBuyerDetail() {
   if (!opp || !contact) {
     return <EmptyState title="Not Found" description="Buyer details could not be loaded." />;
   }
-
-  const pipeline = PipelineRegistry.byName('buyer');
-  const stage = pipeline?.stages?.find(s => s.id === opp.pipelineStageId);
-  const stageIndex = pipeline?.stages?.findIndex(s => s.id === opp.pipelineStageId) ?? 0;
-  const nextStage = pipeline?.stages?.[stageIndex + 1];
-
-  const advanceStageMutation = useMutation({
-    mutationFn: (stageId: string) => opportunitiesService.update(opp.id, { pipelineStageId: stageId }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ghl.opp(opp.id) });
-      queryClient.invalidateQueries({ queryKey: ghl.opps() });
-      toast.success('Stage advanced');
-      setAdvanceStageOpen(false);
-    },
-    onError: () => {
-      toast.error('Failed to advance stage');
-    }
-  });
 
   return (
     <div className="flex flex-col h-full bg-background border-l border-border w-[600px] shrink-0">
@@ -186,7 +186,7 @@ export function DesktopBuyerDetail() {
               <BuyerOffersTab contact={contact} opp={opp} />
             </TabsContent>
             <TabsContent value="appointments" className="m-0">
-              <BuyerAppointmentsTab contact={contact} opp={opp} appointments={appointments || []} />
+              <BuyerAppointmentsTab contact={contact} opp={opp} appointments={(appointments || []) as any[]} />
             </TabsContent>
             <TabsContent value="tasks" className="m-0">
               <BuyerTasksTab contact={contact} opp={opp} tasks={tasksData?.tasks || []} />

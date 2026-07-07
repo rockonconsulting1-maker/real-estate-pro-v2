@@ -9,8 +9,13 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import { EventDetailModal, NewEventModal } from './components/event-modals';
+import { useGhlCredentials } from '@/hooks/use-ghl-credentials';
+import { useBootstrap } from '@/hooks/use-bootstrap';
 
 export function DesktopCalendarView() {
+  const { defaultCalendarId } = useGhlCredentials();
+  const { data: bootstrapData } = useBootstrap();
+
   const [currentDate, setCurrentDate] = useState(new Date());
   const [view, setView] = useState<'week' | 'day' | 'month'>('week');
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
@@ -33,8 +38,13 @@ export function DesktopCalendarView() {
 
   const { data: events, isLoading } = useQuery({
     queryKey: ghl.events({ start: startDate.toISOString(), end: endDate.toISOString() }),
-    queryFn: () => calendarsService.eventsByRange(startDate.toISOString(), endDate.toISOString()),
+    queryFn: () => {
+      const calendarId = defaultCalendarId || (bootstrapData?.calendars?.[0] as any)?.id;
+      if (!calendarId) return [];
+      return calendarsService.eventsByRange({ start: startDate, end: endDate, calendarId });
+    },
     staleTime: 60000,
+    enabled: !!defaultCalendarId || !!(bootstrapData?.calendars?.[0] as any)?.id,
   });
 
   const conflicts = React.useMemo(() => {

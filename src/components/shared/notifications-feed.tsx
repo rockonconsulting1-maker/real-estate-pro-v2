@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { ghl } from '@/lib/queryKeys';
 import { tasksGlobalService } from '@/lib/ghl/services/tasksGlobal';
-import { objectsService } from '@/lib/ghl/services/objects';
+import { objectsService, OBJECT_KEYS } from '@/lib/ghl/services/objects';
 import { calendarsService } from '@/lib/ghl/services/calendars';
 import { conversationsService } from '@/lib/ghl/services/conversations';
 import { format, isToday, isPast, addDays } from 'date-fns';
@@ -10,6 +10,8 @@ import { Bell, CheckSquare, FileText, MessageSquare, Calendar as CalendarIcon, C
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useGhlCredentials } from '@/hooks/use-ghl-credentials';
+import { useBootstrap } from '@/hooks/use-bootstrap';
 
 export function NotificationsFeed({ onClose }: { onClose?: () => void }) {
   const navigate = useNavigate();
@@ -30,15 +32,24 @@ export function NotificationsFeed({ onClose }: { onClose?: () => void }) {
 
   const { data: offers, isLoading: loadingOffers } = useQuery({
     queryKey: ['notifications-offers'],
-    queryFn: () => objectsService.searchRecords('real_estate_offer', { pageLimit: 100 }),
+    queryFn: () => objectsService.searchRecords(OBJECT_KEYS.offers, { pageLimit: 100 }),
   });
+
+  const { defaultCalendarId } = useGhlCredentials();
+  const { data: bootstrapData } = useBootstrap();
 
   const { data: events, isLoading: loadingEvents } = useQuery({
     queryKey: ['notifications-events'],
-    queryFn: () => calendarsService.eventsByRange(
-      new Date().toISOString(),
-      addDays(new Date(), 1).toISOString()
-    ),
+    queryFn: () => {
+      const calendarId = defaultCalendarId || (bootstrapData?.calendars?.[0] as any)?.id;
+      if (!calendarId) return [];
+      return calendarsService.eventsByRange({
+        start: new Date(),
+        end: addDays(new Date(), 1),
+        calendarId
+      });
+    },
+    enabled: !!defaultCalendarId || !!(bootstrapData?.calendars?.[0] as any)?.id,
   });
 
   const { data: conversations, isLoading: loadingConv } = useQuery({

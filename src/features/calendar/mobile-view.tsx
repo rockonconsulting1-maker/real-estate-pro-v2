@@ -3,15 +3,20 @@ import { useQuery } from '@tanstack/react-query';
 import { ghl } from '@/lib/queryKeys';
 import { calendarsService } from '@/lib/ghl/services/calendars';
 import { format, startOfDay, endOfDay, addDays, subDays, isSameDay } from 'date-fns';
-import { MobileShell } from '@/components/mobile/shell';
+
 import { Button } from '@/components/ui/button';
 import { ChevronLeft, ChevronRight, Plus, Clock, User, AlertCircle } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Skeleton } from '@/components/ui/skeleton';
 import { EventDetailModal, NewEventModal } from './components/event-modals';
 import { cn } from '@/lib/utils';
+import { useGhlCredentials } from '@/hooks/use-ghl-credentials';
+import { useBootstrap } from '@/hooks/use-bootstrap';
 
 export function MobileCalendarView() {
+  const { defaultCalendarId } = useGhlCredentials();
+  const { data: bootstrapData } = useBootstrap();
+
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const [isNewEventOpen, setIsNewEventOpen] = useState(false);
@@ -21,8 +26,13 @@ export function MobileCalendarView() {
 
   const { data: events, isLoading } = useQuery({
     queryKey: ghl.events({ start: startDate.toISOString(), end: endDate.toISOString() }),
-    queryFn: () => calendarsService.eventsByRange(startDate.toISOString(), endDate.toISOString()),
+    queryFn: () => {
+      const calendarId = defaultCalendarId || (bootstrapData?.calendars?.[0] as any)?.id;
+      if (!calendarId) return [];
+      return calendarsService.eventsByRange({ start: startDate, end: endDate, calendarId });
+    },
     staleTime: 60000,
+    enabled: !!defaultCalendarId || !!(bootstrapData?.calendars?.[0] as any)?.id,
   });
 
   const dayEvents = (events || []).filter(e => isSameDay(new Date(e.startTime), currentDate));
@@ -113,7 +123,7 @@ export function MobileCalendarView() {
   };
 
   return (
-    <MobileShell>
+    <div className="flex flex-col h-full bg-background overflow-hidden">
       <div className="flex flex-col h-full">
         <div className="px-4 py-3 flex items-center justify-between bg-surface border-b shrink-0">
           <h1 className="text-xl font-bold">Calendar</h1>
@@ -192,6 +202,6 @@ export function MobileCalendarView() {
         open={isNewEventOpen} 
         onOpenChange={setIsNewEventOpen} 
       />
-    </MobileShell>
+    </div>
   );
 }

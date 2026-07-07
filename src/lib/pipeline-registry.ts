@@ -21,7 +21,7 @@ const STAGE_COLORS = [
   'var(--stage-6)',
 ];
 
-class Registry {
+export class Registry {
   private pipelines: Pipeline[] = [];
   
   setPipelines(pipelines: Pipeline[]) {
@@ -95,6 +95,14 @@ class Registry {
       if (idx !== undefined && idx !== -1) return idx;
     }
     return -1;
+  }
+
+  underContractPosition(pipelineId: string): number {
+    const p = this.pipelines.find(p => p.id === pipelineId);
+    if (!p || !p.stages) return -1;
+    const idx = p.stages.findIndex(s => /under contract|conditional|firm|pending|clos/i.test(s.name));
+    if (idx !== -1) return idx;
+    return Math.max(0, p.stages.length - 3);
   }
 }
 

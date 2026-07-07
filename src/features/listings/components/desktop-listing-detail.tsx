@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ghl } from '@/lib/queryKeys';
 import { myListingsService } from '@/lib/ghl/services';
 import { cleanCustomObjectFields } from '@/types/ghl';
-import { DesktopShell } from '@/components/desktop/shell';
+
 import { Button } from '@/components/ui/button';
 import { ArrowLeft, Edit, Image as ImageIcon, MoreVertical, DollarSign, ArrowRightLeft } from 'lucide-react';
 import { Money, StageDot } from '@/components/shared/primitives';
@@ -41,7 +41,7 @@ export function DesktopListingDetail() {
 
   if (isLoading) {
     return (
-      <DesktopShell>
+      <>
         <div className="p-6 space-y-6">
           <Skeleton className="h-10 w-32" />
           <Skeleton className="h-[400px] w-full rounded-xl" />
@@ -50,27 +50,27 @@ export function DesktopListingDetail() {
             <Skeleton className="h-[300px] rounded-xl" />
           </div>
         </div>
-      </DesktopShell>
+      </>
     );
   }
 
   if (error || !data) {
     return (
-      <DesktopShell>
+      <>
         <div className="p-6">
           <Button variant="ghost" onClick={() => navigate('/listings')} className="mb-4">
             <ArrowLeft className="mr-2 h-4 w-4" /> Back to Listings
           </Button>
           <ErrorState message="Failed to load listing details" onRetry={() => refetch()} />
         </div>
-      </DesktopShell>
+      </>
     );
   }
 
   const images = data.image_urls || (data.image_url ? [data.image_url] : []);
 
   return (
-    <DesktopShell>
+    <>
       <div className="h-full flex flex-col overflow-hidden bg-muted/10">
         <div className="flex-none p-6 pb-0">
           <Button variant="ghost" onClick={() => navigate('/listings')} className="mb-4 -ml-4">
@@ -179,6 +179,6 @@ export function DesktopListingDetail() {
       {editOpen && <ListingEditModal listing={data} open={editOpen} onOpenChange={setEditOpen} />}
       {stageOpen && <ChangeStageModal listing={data} open={stageOpen} onOpenChange={setStageOpen} />}
       {priceOpen && <ChangePriceModal listing={data} open={priceOpen} onOpenChange={setPriceOpen} />}
-    </DesktopShell>
+    </>
   );
 }

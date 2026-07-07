@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { DesktopShell } from '@/components/desktop/shell';
+
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/components/ui/resizable';
 import { InboxList } from './components/inbox-list';
 import { ThreadView } from './components/thread-view';
@@ -17,7 +17,7 @@ export function DesktopConversationsView({ selectedId }: Props) {
   };
 
   return (
-    <DesktopShell>
+    <>
       <div className="h-full bg-background overflow-hidden">
         <ResizablePanelGroup direction="horizontal" className="h-full">
           <ResizablePanel defaultSize={35} minSize={25} maxSize={45}>
@@ -42,6 +42,6 @@ export function DesktopConversationsView({ selectedId }: Props) {
           </ResizablePanel>
         </ResizablePanelGroup>
       </div>
-    </DesktopShell>
+    </>
   );
 }

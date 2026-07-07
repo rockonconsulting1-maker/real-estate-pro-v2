@@ -14,7 +14,7 @@ export function NewLeadsWidget() {
 
   const { data, isLoading } = useQuery({
     queryKey: ghl.opps({ pipelineId: leadPipeline?.pipelineId, sort: 'createdAt_desc', limit: 5 }),
-    queryFn: () => opportunitiesService.search({ pipelineId: leadPipeline?.pipelineId }), // GHL doesn't have a direct sort, we'll sort client side
+    queryFn: () => opportunitiesService.search({ pipelineId: leadPipeline?.pipelineId, limit: 100 }), // GHL doesn't have a direct sort, we'll sort client side
     enabled: !!leadPipeline?.pipelineId,
     staleTime: STALE_TIMES.LIST,
   });

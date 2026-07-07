@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { ghl } from '@/lib/queryKeys';
 import { mlsPropertiesService } from '@/lib/ghl/services';
 import { cleanCustomObjectFields } from '@/types/ghl';
-import { MobileShell } from '@/components/mobile/shell';
+
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ErrorState } from '@/components/shared/states';
@@ -26,32 +26,32 @@ export function MobilePropertyDetail({ id }: { id: string }) {
 
   if (isLoading) {
     return (
-      <MobileShell>
+      <>
         <div className="p-4 space-y-4">
           <Skeleton className="h-8 w-24" />
           <Skeleton className="h-48 w-full rounded-xl" />
           <Skeleton className="h-24 w-full rounded-xl" />
           <Skeleton className="h-64 w-full rounded-xl" />
         </div>
-      </MobileShell>
+      </>
     );
   }
 
   if (error || !property) {
     return (
-      <MobileShell>
+      <>
         <div className="p-4">
           <Button variant="ghost" onClick={() => navigate('/mls')} className="mb-4 -ml-4 text-muted-foreground">
             <ArrowLeft className="h-4 w-4 mr-2" /> Back
           </Button>
           <ErrorState message="Failed to load property details" onRetry={() => refetch()} />
         </div>
-      </MobileShell>
+      </>
     );
   }
 
   return (
-    <MobileShell>
+    <>
       <div className="flex flex-col min-h-full pb-20">
         {/* Header */}
         <div className="sticky top-0 z-10 bg-surface/80 backdrop-blur-md border-b px-4 py-3 flex items-center justify-between">
@@ -112,7 +112,7 @@ export function MobilePropertyDetail({ id }: { id: string }) {
           <PropertyTabs property={property} />
         </div>
       </div>
-    </MobileShell>
+    </>
   );
 }
 

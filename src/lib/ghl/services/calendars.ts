@@ -4,28 +4,39 @@ import { Calendar, calendarSchema, Appointment, appointmentSchema } from '@/type
 export const calendarsService = {
   async list(): Promise<Calendar[]> {
     const { locationId } = getGhlCredentials();
-    const result = await ghlFetch<any>('/calendars/', {
+    const result = await ghlFetch<{ calendars: unknown[] }>('/calendars/', {
       query: { locationId }
     });
-    return (result.calendars || []).map((c: any) => calendarSchema.parse(c));
+    return (result.calendars || []).map((c) => calendarSchema.parse(c));
   },
 
-  async eventsByRange(startTime: string, endTime: string): Promise<Appointment[]> {
+  async eventsByRange(params: { start: Date; end: Date; calendarId?: string; userId?: string }): Promise<Appointment[]> {
+    if (!params.calendarId && !params.userId) {
+      console.warn('[calendarsService.eventsByRange] Called without calendarId or userId!', params);
+      return [];
+    }
+    
     const { locationId } = getGhlCredentials();
-    const result = await ghlFetch<any>('/calendars/events', {
-      query: { locationId, startTime, endTime }
+    const result = await ghlFetch<{ events: unknown[] }>('/calendars/events', {
+      query: { 
+        locationId, 
+        startTime: params.start.getTime().toString(), 
+        endTime: params.end.getTime().toString(),
+        calendarId: params.calendarId,
+        userId: params.userId
+      }
     });
-    return (result.events || []).map((e: any) => appointmentSchema.parse(e));
+    return (result.events || []).map((e) => appointmentSchema.parse(e));
   },
 
   async getAppointment(id: string): Promise<Appointment> {
-    const result = await ghlFetch<{appointment: any}>(`/calendars/events/${id}`);
+    const result = await ghlFetch<{appointment: unknown}>(`/calendars/events/appointments/${id}`);
     return appointmentSchema.parse(result.appointment);
   },
 
   async createAppointment(data: Partial<Appointment>): Promise<Appointment> {
     const { locationId } = getGhlCredentials();
-    const result = await ghlFetch<{appointment: any}>('/calendars/events', {
+    const result = await ghlFetch<{appointment: unknown}>('/calendars/events/appointments', {
       method: 'POST',
       body: { ...data, locationId }
     });
@@ -33,7 +44,7 @@ export const calendarsService = {
   },
 
   async updateAppointment(id: string, data: Partial<Appointment>): Promise<Appointment> {
-    const result = await ghlFetch<{appointment: any}>(`/calendars/events/${id}`, {
+    const result = await ghlFetch<{appointment: unknown}>(`/calendars/events/appointments/${id}`, {
       method: 'PUT',
       body: data
     });

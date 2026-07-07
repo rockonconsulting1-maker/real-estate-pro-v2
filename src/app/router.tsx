@@ -85,18 +85,20 @@ const routes: RouteObject[] = [
       { path: 'settings/*', element: <Settings />, errorElement: <RouteErrorBoundary /> },
     ],
   },
-  {
-    path: '/design-preview',
-    element: <DesignPreview />,
-  },
-  {
-    path: '/ghl-smoke',
-    element: (
-      <ProtectedRoute>
-        <GhlSmoke />
-      </ProtectedRoute>
-    ),
-  },
+  ...(import.meta.env.DEV ? [
+    {
+      path: '/design-preview',
+      element: <DesignPreview />,
+    },
+    {
+      path: '/ghl-smoke',
+      element: (
+        <ProtectedRoute>
+          <GhlSmoke />
+        </ProtectedRoute>
+      ),
+    }
+  ] : []),
   {
     path: '*',
     element: <NotFound />,

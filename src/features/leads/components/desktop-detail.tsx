@@ -310,7 +310,7 @@ export function DesktopLeadDetail({ opportunityId }: DesktopLeadDetailProps) {
               <div className="text-center p-8 text-muted-foreground border border-dashed rounded-lg">No appointments found</div>
             ) : (
               <div className="space-y-3">
-                {appointments?.map(a => (
+                {(appointments as any[])?.map(a => (
                   <div key={a.id} className="p-4 bg-surface border border-border rounded-lg flex justify-between items-center">
                     <div>
                       <div className="font-medium">{a.title}</div>

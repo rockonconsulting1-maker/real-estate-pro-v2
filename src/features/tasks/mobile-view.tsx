@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ghl } from '@/lib/queryKeys';
 import { tasksGlobalService } from '@/lib/ghl/services/tasksGlobal';
-import { MobileShell } from '@/components/mobile/shell';
+
 import { Button } from '@/components/ui/button';
 import { Plus, Calendar as CalendarIcon, User, CheckCircle2, Circle } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -126,7 +126,7 @@ export function MobileTasksView() {
   };
 
   return (
-    <MobileShell>
+    <>
       <div className="flex flex-col h-full bg-background">
         {/* Header */}
         <div className="px-4 py-3 flex items-center justify-between bg-surface border-b shrink-0">
@@ -230,6 +230,6 @@ export function MobileTasksView() {
       
       <NewTaskModal open={isNewTaskOpen} onOpenChange={setIsNewTaskOpen} />
       <TaskDetailModal task={selectedTask} open={!!selectedTask} onOpenChange={(o) => !o && setSelectedTask(null)} />
-    </MobileShell>
+    </>
   );
 }

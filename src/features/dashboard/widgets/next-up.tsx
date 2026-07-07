@@ -10,16 +10,24 @@ import { format, addDays } from 'date-fns';
 import { Calendar as CalendarIcon, MapPin, User } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { EmptyState, ErrorState } from '@/components/shared/states';
+import { useGhlCredentials } from '@/hooks/use-ghl-credentials';
+import { useBootstrap } from '@/hooks/use-bootstrap';
 
 export function NextUpWidget() {
+  const { defaultCalendarId } = useGhlCredentials();
+  const { data: bootstrapData } = useBootstrap();
+  
   const { data: events, isLoading, error, refetch } = useQuery({
     queryKey: ghl.events({ range: 'next-7d' }),
     queryFn: () => {
       const now = new Date();
       const nextWeek = addDays(now, 7);
-      return calendarsService.eventsByRange(now.getTime().toString(), nextWeek.getTime().toString());
+      const calendarId = defaultCalendarId || (bootstrapData?.calendars?.[0] as any)?.id;
+      if (!calendarId) return [];
+      return calendarsService.eventsByRange({ start: now, end: nextWeek, calendarId });
     },
     staleTime: STALE_TIMES.LIST,
+    enabled: !!defaultCalendarId || !!(bootstrapData?.calendars?.[0] as any)?.id,
   });
 
   if (isLoading) {

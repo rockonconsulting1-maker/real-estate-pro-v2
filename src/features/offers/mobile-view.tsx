@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { ghl } from '@/lib/queryKeys';
 import { offersService } from '@/lib/ghl/services';
 import { cleanCustomObjectFields } from '@/types/ghl';
-import { MobileShell } from '@/components/mobile/shell';
+
 import { Money, Countdown, StatusChip } from '@/components/shared/primitives';
 import { Input } from '@/components/ui/input';
 import { Search } from 'lucide-react';
@@ -28,19 +28,19 @@ export function MobileOffersView() {
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ghl.records('real_estate_offer', { query: debouncedSearch }),
     queryFn: async () => {
-      let filters: any = undefined;
+      const res = await offersService.search({ query: debouncedSearch, pageLimit: 100 });
+      let records = res.records.map(r => cleanCustomObjectFields(r, 'real_estate_offer'));
       if (statusFilter !== 'all') {
-        filters = [{ field: 'status', operator: 'eq', value: statusFilter }];
+        records = records.filter(r => r.status === statusFilter || r.offer_status === statusFilter);
       }
-      const res = await offersService.search({ query: debouncedSearch, filters });
-      return res.records.map(r => cleanCustomObjectFields(r, 'real_estate_offer'));
+      return records;
     },
   });
 
   const statuses = ['all', 'pending', 'submitted', 'accepted', 'countered', 'declined'];
 
   return (
-    <MobileShell>
+    <div className="flex flex-col h-full overflow-hidden bg-background">
       <div className="p-4 space-y-4">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -130,6 +130,6 @@ export function MobileOffersView() {
         </Button>
       </div>
       <NewOfferModal open={isNewOfferOpen} onOpenChange={setIsNewOfferOpen} />
-    </MobileShell>
+    </div>
   );
 }

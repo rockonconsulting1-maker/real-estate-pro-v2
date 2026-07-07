@@ -4,14 +4,14 @@ import { useQuery } from '@tanstack/react-query';
 import { ghl } from '@/lib/queryKeys';
 import { mlsPropertiesService } from '@/lib/ghl/services';
 import { cleanCustomObjectFields } from '@/types/ghl';
-import { DesktopShell } from '@/components/desktop/shell';
+
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { LayoutGrid, List, Search } from 'lucide-react';
+import { LayoutGrid, List, Search, Map } from 'lucide-react';
 import { VirtualizedTable } from '@/components/shared/virtualized';
-import { Money } from '@/components/shared/primitives';
+import { Money, MapPlaceholder } from '@/components/shared/primitives';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ErrorState, EmptyState } from '@/components/shared/states';
 import { Card, CardContent } from '@/components/ui/card';
@@ -19,7 +19,7 @@ import { useDebounce } from '@/hooks/use-query-helpers';
 
 export function DesktopMlsView() {
   const navigate = useNavigate();
-  const [view, setView] = useState<'grid' | 'table'>('grid');
+  const [view, setView] = useState<'grid' | 'table' | 'map'>('grid');
   
   // Filters
   const [search, setSearch] = useState('');
@@ -40,18 +40,14 @@ export function DesktopMlsView() {
       sort
     }),
     queryFn: async () => {
-      const filters = [];
-      if (propertyType !== 'all') filters.push({ field: 'property_type', operator: 'eq', value: propertyType });
-      if (status !== 'all') filters.push({ field: 'property_status', operator: 'eq', value: status });
-      if (beds !== 'all') filters.push({ field: 'property_beds', operator: 'gte', value: Number(beds) });
-      if (baths !== 'all') filters.push({ field: 'property_baths', operator: 'gte', value: Number(baths) });
-      
-      // We would ideally pass sort to the API, but GHL custom objects API might not support complex sorting.
-      // We'll pass it if supported, or sort client-side.
-      
-      const res = await mlsPropertiesService.search({ query: debouncedSearch, filters });
+      const res = await mlsPropertiesService.search({ query: debouncedSearch, pageLimit: 100 });
       
       let records = res.records.map(r => cleanCustomObjectFields(r, 'properties'));
+      
+      if (propertyType !== 'all') records = records.filter(r => r.property_type === propertyType);
+      if (status !== 'all') records = records.filter(r => r.property_status === status);
+      if (beds !== 'all') records = records.filter(r => (r.property_beds || 0) >= Number(beds));
+      if (baths !== 'all') records = records.filter(r => (r.property_baths || 0) >= Number(baths));
       
       // Client-side sort for now
       if (sort === 'price_asc') records.sort((a, b) => (a.property_price || 0) - (b.property_price || 0));
@@ -63,17 +59,18 @@ export function DesktopMlsView() {
   });
 
   return (
-    <DesktopShell>
+    <div className="h-full bg-background flex flex-col">
       <div className="h-full flex flex-col p-6 space-y-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-4">
             <h1 className="text-page-title-desktop">MLS Search</h1>
-            {data && <span className="text-muted-foreground text-sm">{data.total} results</span>}
+            {data && <span className="text-muted-foreground text-sm">{(data as any).total} results</span>}
           </div>
           <div className="flex items-center space-x-2">
             <ToggleGroup type="single" value={view} onValueChange={(v) => v && setView(v as any)}>
               <ToggleGroupItem value="grid" aria-label="Grid View"><LayoutGrid className="h-4 w-4" /></ToggleGroupItem>
               <ToggleGroupItem value="table" aria-label="Table View"><List className="h-4 w-4" /></ToggleGroupItem>
+              <ToggleGroupItem value="map" aria-label="Map View"><Map className="h-4 w-4" /></ToggleGroupItem>
             </ToggleGroup>
           </div>
         </div>
@@ -188,11 +185,16 @@ export function DesktopMlsView() {
                   onRowClick={(row) => navigate(`/mls/${row.id}`)}
                 />
               )}
+              {view === 'map' && (
+                <div className="h-full w-full relative pb-10">
+                  <MapPlaceholder className="absolute inset-0" />
+                </div>
+              )}
             </>
           )}
         </div>
       </div>
-    </DesktopShell>
+    </div>
   );
 }
 

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { ghl } from '@/lib/queryKeys';
 import { contactsService } from '@/lib/ghl/services';
@@ -10,24 +10,22 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyState, ErrorState } from '@/components/shared/states';
-import { VirtualizedList } from '@/components/shared/virtualized';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Contact } from '@/types/ghl';
-import { formatDistanceToNow } from 'date-fns';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import { DesktopContactDetail } from './components/desktop-contact-detail';
 import { NewContactSheet } from './components/contact-modals';
 import { Plus } from 'lucide-react';
 
 const ROLE_FILTERS = [
   { label: 'All', value: 'all' },
-  { label: 'Vendors', value: 'Vendor' },
-  { label: 'SOI', value: 'SOI' },
-  { label: 'RE Agents', value: 'RE Agent' },
-  { label: 'Team', value: 'Team' },
-  { label: 'Past Clients', value: 'Past Client' },
-  { label: 'Leads', value: 'Lead' },
-  { label: 'Clients', value: 'Client' },
+  { label: 'Vendors', value: 'type:vendor' },
+  { label: 'SOI', value: 'type:soi' },
+  { label: 'RE Agents', value: 'type:re-agent' },
+  { label: 'Team', value: 'type:team' },
+  { label: 'Past Clients', value: 'lifecycle:past-client' },
+  { label: 'Leads', value: 'lifecycle:lead' },
+  { label: 'Clients', value: 'lifecycle:client' },
 ];
 
 export function DesktopContactsView() {
@@ -60,7 +58,7 @@ export function DesktopContactsView() {
     }
   );
 
-  const contacts = React.useMemo(() => {
+  const contacts = useMemo(() => {
     const all = data?.pages.flatMap(p => p.data) || [];
     return all.sort((a, b) => {
       if (sortBy === 'name') {
@@ -77,6 +75,54 @@ export function DesktopContactsView() {
       return 0;
     });
   }, [data, sortBy]);
+
+  type ListItem = { isHeader: true; letter: string; contact?: never } | { isHeader: false; letter?: never; contact: Contact };
+
+  const contactsWithHeaders = useMemo(() => {
+    if (sortBy !== 'name') return contacts.map(c => ({ isHeader: false, contact: c }));
+    
+    const res: ListItem[] = [];
+    let lastLetter = '';
+    
+    for (const c of contacts) {
+      const name = `${c.firstName || ''} ${c.lastName || ''}`.trim();
+      const letter = name ? name[0].toUpperCase() : '#';
+      const group = /[A-Z]/.test(letter) ? letter : '#';
+      
+      if (group !== lastLetter) {
+        res.push({ isHeader: true, letter: group });
+        lastLetter = group;
+      }
+      res.push({ isHeader: false, contact: c });
+    }
+    return res;
+  }, [contacts, sortBy]);
+
+  const parentRef = useRef<HTMLDivElement>(null);
+
+  const rowVirtualizer = useVirtualizer({
+    count: hasNextPage ? contactsWithHeaders.length + 1 : contactsWithHeaders.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: (i) => {
+      if (i >= contactsWithHeaders.length) return 60; // loader
+      return contactsWithHeaders[i].isHeader ? 32 : 72; // 72px for contact row
+    },
+    overscan: 5,
+  });
+
+  const virtualItems = rowVirtualizer.getVirtualItems();
+
+  useEffect(() => {
+    const lastItem = virtualItems[virtualItems.length - 1];
+    if (
+      lastItem &&
+      lastItem.index >= contactsWithHeaders.length - 1 &&
+      hasNextPage &&
+      !isLoading
+    ) {
+      fetchNextPage();
+    }
+  }, [virtualItems, contactsWithHeaders.length, hasNextPage, isLoading, fetchNextPage]);
 
   return (
     <div className="flex h-[calc(100vh-64px)] overflow-hidden">
@@ -124,40 +170,72 @@ export function DesktopContactsView() {
           </div>
         </div>
 
-        <div className="flex-1 overflow-hidden">
+        <div className="flex-1 overflow-hidden relative">
           {isLoading ? (
             <div className="p-4 space-y-4">
               {[1,2,3,4,5].map(i => <Skeleton key={i} className="h-16 w-full" />)}
             </div>
           ) : isError ? (
             <ErrorState onRetry={refetch} />
-          ) : contacts.length === 0 ? (
+          ) : contactsWithHeaders.length === 0 ? (
             <EmptyState title="No contacts found" description="Try adjusting your filters" />
           ) : (
-            <VirtualizedList<Contact>
-              data={contacts}
-              fetchNextPage={() => hasNextPage && fetchNextPage()}
-              hasNextPage={hasNextPage}
-              renderItem={(contact) => (
-                <div 
-                  className={`p-4 border-b cursor-pointer hover:bg-muted/50 transition-colors ${selectedContactId === contact.id ? 'bg-muted' : ''}`}
-                  onClick={() => setSelectedContactId(contact.id)}
-                >
-                  <div className="flex items-center gap-3">
-                    <Avatar>
-                      <AvatarFallback>{contact.firstName?.[0] || ''}{contact.lastName?.[0] || ''}</AvatarFallback>
-                    </Avatar>
-                    <div className="flex-1 min-w-0">
-                      <div className="font-medium truncate">{contact.firstName} {contact.lastName}</div>
-                      <div className="text-sm text-muted-foreground truncate">{contact.email || contact.phone || 'No contact info'}</div>
+            <div ref={parentRef} className="h-full overflow-auto">
+              <div
+                style={{
+                  height: `${rowVirtualizer.getTotalSize()}px`,
+                  width: '100%',
+                  position: 'relative',
+                }}
+              >
+                {virtualItems.map((virtualRow) => {
+                  const isLoaderRow = virtualRow.index > contactsWithHeaders.length - 1;
+                  const item = contactsWithHeaders[virtualRow.index];
+
+                  return (
+                    <div
+                      key={virtualRow.index}
+                      style={{
+                        position: 'absolute',
+                        top: 0,
+                        left: 0,
+                        width: '100%',
+                        height: `${virtualRow.size}px`,
+                        transform: `translateY(${virtualRow.start}px)`,
+                      }}
+                    >
+                      {isLoaderRow ? (
+                        <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
+                          Loading more...
+                        </div>
+                      ) : (item as any).isHeader ? (
+                        <div className="bg-muted/30 px-4 py-1.5 text-sm font-semibold text-muted-foreground border-y sticky top-0 z-10 backdrop-blur-sm">
+                          {(item as any).letter}
+                        </div>
+                      ) : (
+                        <div 
+                          className={`p-4 border-b cursor-pointer hover:bg-muted/50 transition-colors ${selectedContactId === item.contact!.id ? 'bg-muted' : ''}`}
+                          onClick={() => setSelectedContactId(item.contact!.id)}
+                        >
+                          <div className="flex items-center gap-3">
+                            <Avatar>
+                              <AvatarFallback>{item.contact!.firstName?.[0] || ''}{item.contact!.lastName?.[0] || ''}</AvatarFallback>
+                            </Avatar>
+                            <div className="flex-1 min-w-0">
+                              <div className="font-medium truncate">{item.contact!.firstName} {item.contact!.lastName}</div>
+                              <div className="text-sm text-muted-foreground truncate">{item.contact!.email || item.contact!.phone || 'No contact info'}</div>
+                            </div>
+                            {item.contact!.tags && item.contact!.tags.length > 0 && (
+                              <Badge variant="secondary" className="text-[10px]">{item.contact!.tags[0]}</Badge>
+                            )}
+                          </div>
+                        </div>
+                      )}
                     </div>
-                    {contact.tags && contact.tags.length > 0 && (
-                      <Badge variant="secondary" className="text-[10px]">{contact.tags[0]}</Badge>
-                    )}
-                  </div>
-                </div>
-              )}
-            />
+                  );
+                })}
+              </div>
+            </div>
           )}
         </div>
       </div>

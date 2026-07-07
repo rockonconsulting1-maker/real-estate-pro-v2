@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ghl } from '@/lib/queryKeys';
 import { tasksGlobalService } from '@/lib/ghl/services/tasksGlobal';
-import { DesktopShell } from '@/components/desktop/shell';
+
 import { 
   DndContext, 
   DragOverlay, 
@@ -220,7 +220,7 @@ export function DesktopTasksView() {
   const activeTask = activeId ? tasks.find(t => t.id === activeId) : null;
 
   return (
-    <DesktopShell>
+    <>
       <div className="h-full flex flex-col">
         <div className="p-6 border-b shrink-0 flex items-center justify-between bg-surface">
           <div>
@@ -308,6 +308,6 @@ export function DesktopTasksView() {
       
       <NewTaskModal open={isNewTaskOpen} onOpenChange={setIsNewTaskOpen} />
       <TaskDetailModal task={selectedTask} open={!!selectedTask} onOpenChange={(o) => !o && setSelectedTask(null)} />
-    </DesktopShell>
+    </>
   );
 }

@@ -4,7 +4,7 @@ import { ghl } from '@/lib/queryKeys';
 import { usersService } from '@/lib/ghl/services/users';
 import { opportunitiesService } from '@/lib/ghl/services/opportunities';
 import { tasksGlobalService } from '@/lib/ghl/services/tasksGlobal';
-import { MobileShell } from '@/components/mobile/shell';
+
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
@@ -93,7 +93,7 @@ export function MobileTeamView() {
   };
 
   return (
-    <MobileShell>
+    <>
       <div className="flex flex-col h-full bg-background">
         <div className="p-4 bg-surface border-b shrink-0">
           <h1 className="text-xl font-bold">Team Directory</h1>
@@ -228,6 +228,6 @@ export function MobileTeamView() {
           </DialogContent>
         </Dialog>
       </div>
-    </MobileShell>
+    </>
   );
 }

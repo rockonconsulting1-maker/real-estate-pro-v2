@@ -2,7 +2,7 @@ import React, { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { sb } from '@/lib/queryKeys';
 import { docsService, DocumentRecord } from '@/lib/supabase/storage';
-import { MobileShell } from '@/components/mobile/shell';
+
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Search, Upload, File, MoreVertical, Download, Edit2, Trash2, FileText, Image as ImageIcon } from 'lucide-react';
@@ -122,7 +122,7 @@ export function MobileDocsView() {
   };
 
   return (
-    <MobileShell>
+    <>
       <div className="flex flex-col h-full bg-background">
         <div className="p-4 space-y-4 bg-surface border-b shrink-0">
           <div className="relative">
@@ -271,6 +271,6 @@ export function MobileDocsView() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </MobileShell>
+    </>
   );
 }

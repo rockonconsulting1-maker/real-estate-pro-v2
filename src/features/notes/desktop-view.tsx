@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ghl } from '@/lib/queryKeys';
 import { contactsService } from '@/lib/ghl/services/contacts';
 import { notesService } from '@/lib/ghl/services/notes';
-import { DesktopShell } from '@/components/desktop/shell';
+
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Search, Plus, User, FileText, Calendar, Tag } from 'lucide-react';
@@ -53,7 +53,7 @@ export function DesktopNotesView() {
   );
 
   return (
-    <DesktopShell>
+    <>
       <div className="h-full flex flex-col">
         <div className="p-6 border-b shrink-0 flex items-center justify-between bg-surface">
           <div>
@@ -135,6 +135,6 @@ export function DesktopNotesView() {
           onOpenChange={(open) => !open && setSelectedNote(null)} 
         />
       )}
-    </DesktopShell>
+    </>
   );
 }

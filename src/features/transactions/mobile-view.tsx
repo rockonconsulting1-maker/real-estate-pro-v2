@@ -23,6 +23,7 @@ export default function MobileTransactionsView() {
 
   const buyerPipeline = PipelineRegistry.byName('buyer');
   const sellerPipeline = PipelineRegistry.byName('seller');
+  const registry = PipelineRegistry;
 
   const { data: buyerOpps, isLoading: isLoadingBuyers } = useQuery({
     queryKey: ghl.opps({ pipelineId: buyerPipeline?.pipelineId, q: debouncedSearch }),
@@ -45,9 +46,9 @@ export default function MobileTransactionsView() {
     ] as (any & { side: string })[];
 
     all = all.filter(o => {
-      const stageName = PipelineRegistry.stageLabel(o.pipelineStageId).toLowerCase();
-      const pos = PipelineRegistry.stagePosition(o.pipelineStageId);
-      return pos >= 3 || stageName.includes('contract') || stageName.includes('firm') || stageName.includes('close');
+      const pos = registry.stagePosition(o.pipelineStageId);
+      const ucPos = registry.underContractPosition(o.pipelineId || '');
+      return ucPos !== -1 && pos >= ucPos;
     });
 
     return all.sort((a, b) => {

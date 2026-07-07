@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { ghl } from '@/lib/queryKeys';
 import { myListingsService } from '@/lib/ghl/services';
 import { cleanCustomObjectFields } from '@/types/ghl';
-import { MobileShell } from '@/components/mobile/shell';
+
 import { Button } from '@/components/ui/button';
 import { ArrowLeft, Edit, Image as ImageIcon, MoreVertical, DollarSign, ArrowRightLeft } from 'lucide-react';
 import { Money, StageDot } from '@/components/shared/primitives';
@@ -39,33 +39,33 @@ export function MobileListingDetail() {
 
   if (isLoading) {
     return (
-      <MobileShell>
+      <>
         <div className="p-4 space-y-4">
           <Skeleton className="h-10 w-32" />
           <Skeleton className="h-[250px] w-full rounded-xl" />
           <Skeleton className="h-[200px] w-full rounded-xl" />
         </div>
-      </MobileShell>
+      </>
     );
   }
 
   if (error || !data) {
     return (
-      <MobileShell>
+      <>
         <div className="p-4">
           <Button variant="ghost" onClick={() => navigate('/listings')} className="mb-4">
             <ArrowLeft className="mr-2 h-4 w-4" /> Back
           </Button>
           <ErrorState message="Failed to load listing details" onRetry={() => refetch()} />
         </div>
-      </MobileShell>
+      </>
     );
   }
 
   const images = data.image_urls || (data.image_url ? [data.image_url] : []);
 
   return (
-    <MobileShell>
+    <>
       <div className="flex flex-col h-full overflow-hidden bg-background">
         <div className="flex items-center p-2 border-b shrink-0">
           <Button variant="ghost" size="icon" onClick={() => navigate('/listings')}>
@@ -151,6 +151,6 @@ export function MobileListingDetail() {
       {editOpen && <ListingEditModal listing={data} open={editOpen} onOpenChange={setEditOpen} />}
       {stageOpen && <ChangeStageModal listing={data} open={stageOpen} onOpenChange={setStageOpen} />}
       {priceOpen && <ChangePriceModal listing={data} open={priceOpen} onOpenChange={setPriceOpen} />}
-    </MobileShell>
+    </>
   );
 }

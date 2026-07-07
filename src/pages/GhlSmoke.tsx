@@ -7,7 +7,7 @@ import { contactsService, opportunitiesService } from '@/lib/ghl/services';
 
 export default function GhlSmoke() {
   const { pit, locationId, isConfigured } = useGhlCredentials();
-  const [results, setResults] = useState<any>({});
+  const [results, setResults] = useState<Record<string, unknown>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -24,7 +24,7 @@ export default function GhlSmoke() {
     try {
       // 1. Validate Credentials
       const validation = await validateCredentials(pit, locationId);
-      setResults((prev: any) => ({ ...prev, validation }));
+      setResults((prev) => ({ ...prev, validation }));
 
       if (!validation.ok) {
         throw new Error('Credential validation failed');
@@ -33,21 +33,21 @@ export default function GhlSmoke() {
       // 2. Fetch Contacts
       try {
         const contacts = await contactsService.search({ query: '', page: 1 });
-        setResults((prev: any) => ({ ...prev, contacts: { count: contacts.contacts.length } }));
-      } catch (e: any) {
-        setResults((prev: any) => ({ ...prev, contacts: { error: e.message } }));
+        setResults((prev) => ({ ...prev, contacts: { count: contacts.contacts.length } }));
+      } catch (e) {
+        setResults((prev) => ({ ...prev, contacts: { error: e instanceof Error ? e.message : 'Error' } }));
       }
 
       // 3. Fetch Opportunities
       try {
         const opps = await opportunitiesService.search();
-        setResults((prev: any) => ({ ...prev, opportunities: { count: opps.opportunities.length } }));
-      } catch (e: any) {
-        setResults((prev: any) => ({ ...prev, opportunities: { error: e.message } }));
+        setResults((prev) => ({ ...prev, opportunities: { count: opps.opportunities.length } }));
+      } catch (e) {
+        setResults((prev) => ({ ...prev, opportunities: { error: e instanceof Error ? e.message : 'Error' } }));
       }
 
-    } catch (e: any) {
-      setError(e.message);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Unknown error');
     } finally {
       setLoading(false);
     }

@@ -187,4 +187,17 @@
   .text-time {
     @apply text-[11px] font-medium tracking-normal font-mono tabular-nums;
   }
+  
+  /* Map Placeholder */
+  .map {
+    @apply bg-surface relative overflow-hidden;
+    background-image: radial-gradient(var(--border-2) 1px, transparent 1px);
+    background-size: 40px 40px;
+    mask-image: radial-gradient(circle at center, black 40%, transparent 100%);
+    -webkit-mask-image: radial-gradient(circle at center, black 40%, transparent 100%);
+  }
+  
+  .dark .map {
+    background-image: radial-gradient(var(--border) 1px, transparent 1px);
+  }
 }

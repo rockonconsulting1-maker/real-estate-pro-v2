@@ -1,44 +1,62 @@
 import { ghlFetch, getGhlCredentials } from '../client';
 import { CustomObjectRecord, customObjectRecordSchema } from '@/types/ghl';
 
+export const OBJECT_KEYS = {
+  listings: 'custom_objects.my_listings',
+  properties: 'custom_objects.properties',
+  offers: 'custom_objects.real_estate_offer'
+} as const;
+
 export const objectsService = {
-  async searchRecords(schemaKey: string, params: { query?: string; page?: number; pageLimit?: number; searchAfter?: string; filters?: any } = {}): Promise<{ records: CustomObjectRecord[]; meta: any }> {
+  async getSchema(schemaKey: string): Promise<Record<string, unknown>> {
     const { locationId } = getGhlCredentials();
-    const result = await ghlFetch<any>(`/custom-objects/${schemaKey}/records/search`, {
+    const result = await ghlFetch<{ schema?: Record<string, unknown> } & Record<string, unknown>>(`/objects/${schemaKey}`, {
+      query: { locationId }
+    });
+    return result.schema || result;
+  },
+
+  async searchRecords(schemaKey: string, params: { query?: string; page?: number; pageLimit?: number; searchAfter?: string[]; filters?: unknown[] } = {}): Promise<{ records: CustomObjectRecord[]; meta: Record<string, unknown> }> {
+    const { locationId } = getGhlCredentials();
+    
+    // Build the request body matching GHL API strictly
+    const body: Record<string, any> = { locationId };
+    if (params.query) body.query = params.query;
+    if (params.pageLimit) body.limit = params.pageLimit;
+    else body.limit = 20; // Default limit
+    if (params.searchAfter) body.searchAfter = params.searchAfter;
+    // Note: 'filters' is omitted from the body as it causes 422 Unprocessable Content errors.
+    // Custom Object filtering must be done client-side or using supported query parameters.
+    
+    const result = await ghlFetch<{ records: unknown[]; meta?: Record<string, unknown> }>(`/objects/${schemaKey}/records/search`, {
       method: 'POST',
-      body: {
-        locationId,
-        query: params.query,
-        limit: params.pageLimit || 20,
-        searchAfter: params.searchAfter,
-        filters: params.filters
-      }
+      body
     });
     
-    const records = (result.records || []).map((r: any) => customObjectRecordSchema.parse(r));
+    const records = (result.records || []).map((r) => customObjectRecordSchema.parse(r));
     return { records, meta: result.meta || {} };
   },
 
   async getRecord(schemaKey: string, id: string): Promise<CustomObjectRecord> {
     const { locationId } = getGhlCredentials();
-    const result = await ghlFetch<{record: any}>(`/custom-objects/${schemaKey}/records/${id}`, {
+    const result = await ghlFetch<{record: unknown}>(`/objects/${schemaKey}/records/${id}`, {
       query: { locationId }
     });
     return customObjectRecordSchema.parse(result.record);
   },
 
-  async createRecord(schemaKey: string, data: any): Promise<CustomObjectRecord> {
+  async createRecord(schemaKey: string, data: Record<string, unknown>): Promise<CustomObjectRecord> {
     const { locationId } = getGhlCredentials();
-    const result = await ghlFetch<{record: any}>(`/custom-objects/${schemaKey}/records`, {
+    const result = await ghlFetch<{record: unknown}>(`/objects/${schemaKey}/records`, {
       method: 'POST',
       body: { ...data, locationId }
     });
     return customObjectRecordSchema.parse(result.record);
   },
 
-  async updateRecord(schemaKey: string, id: string, data: any): Promise<CustomObjectRecord> {
+  async updateRecord(schemaKey: string, id: string, data: Record<string, unknown>): Promise<CustomObjectRecord> {
     const { locationId } = getGhlCredentials();
-    const result = await ghlFetch<{record: any}>(`/custom-objects/${schemaKey}/records/${id}`, {
+    const result = await ghlFetch<{record: unknown}>(`/objects/${schemaKey}/records/${id}`, {
       method: 'PUT',
       body: { ...data, locationId }
     });
@@ -47,7 +65,7 @@ export const objectsService = {
 
   async deleteRecord(schemaKey: string, id: string): Promise<void> {
     const { locationId } = getGhlCredentials();
-    await ghlFetch(`/custom-objects/${schemaKey}/records/${id}`, { 
+    await ghlFetch(`/objects/${schemaKey}/records/${id}`, { 
       method: 'DELETE',
       query: { locationId }
     });
@@ -56,22 +74,22 @@ export const objectsService = {
 
 // Thin wrappers
 export const myListingsService = {
-  search: (params: any) => objectsService.searchRecords('my_listings', params),
-  get: (id: string) => objectsService.getRecord('my_listings', id),
-  create: (data: any) => objectsService.createRecord('my_listings', data),
-  update: (id: string, data: any) => objectsService.updateRecord('my_listings', id, data),
-  delete: (id: string) => objectsService.deleteRecord('my_listings', id),
+  search: (params: any) => objectsService.searchRecords(OBJECT_KEYS.listings, params),
+  get: (id: string) => objectsService.getRecord(OBJECT_KEYS.listings, id),
+  create: (data: any) => objectsService.createRecord(OBJECT_KEYS.listings, data),
+  update: (id: string, data: any) => objectsService.updateRecord(OBJECT_KEYS.listings, id, data),
+  delete: (id: string) => objectsService.deleteRecord(OBJECT_KEYS.listings, id),
 };
 
 export const mlsPropertiesService = {
-  search: (params: any) => objectsService.searchRecords('properties', params),
-  get: (id: string) => objectsService.getRecord('properties', id),
+  search: (params: any) => objectsService.searchRecords(OBJECT_KEYS.properties, params),
+  get: (id: string) => objectsService.getRecord(OBJECT_KEYS.properties, id),
 };
 
 export const offersService = {
-  search: (params: any) => objectsService.searchRecords('real_estate_offer', params),
-  get: (id: string) => objectsService.getRecord('real_estate_offer', id),
-  create: (data: any) => objectsService.createRecord('real_estate_offer', data),
-  update: (id: string, data: any) => objectsService.updateRecord('real_estate_offer', id, data),
-  delete: (id: string) => objectsService.deleteRecord('real_estate_offer', id),
+  search: (params: any) => objectsService.searchRecords(OBJECT_KEYS.offers, params),
+  get: (id: string) => objectsService.getRecord(OBJECT_KEYS.offers, id),
+  create: (data: any) => objectsService.createRecord(OBJECT_KEYS.offers, data),
+  update: (id: string, data: any) => objectsService.updateRecord(OBJECT_KEYS.offers, id, data),
+  delete: (id: string) => objectsService.deleteRecord(OBJECT_KEYS.offers, id),
 };

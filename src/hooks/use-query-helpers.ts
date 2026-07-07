@@ -57,11 +57,12 @@ export function useOptimisticMutation<TData, TVariables>(options: OptimisticOpti
       
       queryClient.setQueryData(queryKey, (old: any) => updater(old, variables));
       
+      let callerContext: any = {};
       if (onMutate) {
-        await (onMutate as any)(variables);
+        callerContext = await (onMutate as any)(variables);
       }
       
-      return { previousData };
+      return { previousData, ...(callerContext ?? {}) };
     },
     onError: (err, variables, context) => {
       if (context?.previousData) {
@@ -78,4 +79,27 @@ export function useOptimisticMutation<TData, TVariables>(options: OptimisticOpti
       }
     }
   });
+}
+
+export async function fetchAllPages<T>(
+  fetchPage: (cursor?: string) => Promise<{ items: T[]; nextCursor?: string }>,
+  options: { maxPages?: number } = {}
+): Promise<{ items: T[]; hitCap: boolean }> {
+  const { maxPages = 10 } = options;
+  const allItems: T[] = [];
+  let cursor: string | undefined;
+  let pages = 0;
+
+  do {
+    const res = await fetchPage(cursor);
+    allItems.push(...res.items);
+    cursor = res.nextCursor;
+    pages++;
+    
+    if (pages >= maxPages && cursor) {
+      return { items: allItems, hitCap: true };
+    }
+  } while (cursor);
+
+  return { items: allItems, hitCap: false };
 }

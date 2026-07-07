@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ghl } from '@/lib/queryKeys';
 import { objectsService, associationsService } from '@/lib/ghl/services';
 import { cleanCustomObjectFields } from '@/types/ghl';
-import { DesktopShell } from '@/components/desktop/shell';
+
 import { Money, Countdown, StatusChip } from '@/components/shared/primitives';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -52,7 +52,7 @@ export function DesktopOfferDetail() {
 
   if (isLoading) {
     return (
-      <DesktopShell>
+      <>
         <div className="p-6 space-y-6">
           <Skeleton className="h-24 w-full" />
           <div className="grid grid-cols-3 gap-6">
@@ -60,17 +60,17 @@ export function DesktopOfferDetail() {
             <Skeleton className="col-span-1 h-96" />
           </div>
         </div>
-      </DesktopShell>
+      </>
     );
   }
 
   if (error || !offer) {
     return (
-      <DesktopShell>
+      <>
         <div className="p-6">
           <ErrorState message="Failed to load offer details" onRetry={() => window.location.reload()} />
         </div>
-      </DesktopShell>
+      </>
     );
   }
 
@@ -79,7 +79,7 @@ export function DesktopOfferDetail() {
     (new Date(offer.irrevocable_until).getTime() - new Date().getTime()) > 0;
 
   return (
-    <DesktopShell>
+    <>
       <div className="h-full flex flex-col overflow-hidden bg-background">
         {/* Header */}
         <div className="flex-none p-6 border-b bg-surface">
@@ -272,6 +272,6 @@ export function DesktopOfferDetail() {
           }}
         />
       )}
-    </DesktopShell>
+    </>
   );
 }

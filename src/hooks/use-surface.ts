@@ -3,7 +3,12 @@ import * as React from "react";
 const DESKTOP_BREAKPOINT = 1024;
 
 export function useSurface(): 'desktop' | 'mobile' {
-  const [surface, setSurface] = React.useState<'desktop' | 'mobile'>('desktop');
+  const [surface, setSurface] = React.useState<'desktop' | 'mobile'>(() => {
+    if (typeof window !== 'undefined') {
+      return window.matchMedia(`(min-width: ${DESKTOP_BREAKPOINT}px)`).matches ? 'desktop' : 'mobile';
+    }
+    return 'desktop';
+  });
 
   React.useEffect(() => {
     const mql = window.matchMedia(`(min-width: ${DESKTOP_BREAKPOINT}px)`);

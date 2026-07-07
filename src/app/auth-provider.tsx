@@ -1,6 +1,8 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { Session, User } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase/client';
+import { setGhlCredentials } from '@/lib/ghl/client';
+import { useQueryClient } from '@tanstack/react-query';
 
 interface AuthContextType {
   session: Session | null;
@@ -15,6 +17,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -33,7 +36,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signOut = async () => {
-    await supabase.auth.signOut();
+    try {
+      setGhlCredentials(null, null);
+      queryClient.clear();
+      const { error } = await supabase.auth.signOut();
+      if (error) {
+        console.error("Sign out error", error);
+        // Force local signout if server fails (e.g., 403)
+        await supabase.auth.signOut({ scope: 'local' });
+      }
+    } catch (err) {
+      console.error("Force clearing session", err);
+      setSession(null);
+      setUser(null);
+    }
   };
 
   return (

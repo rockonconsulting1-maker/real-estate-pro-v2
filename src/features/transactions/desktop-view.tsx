@@ -28,6 +28,7 @@ export default function DesktopTransactionsView() {
 
   const buyerPipeline = PipelineRegistry.byName('buyer');
   const sellerPipeline = PipelineRegistry.byName('seller');
+  const registry = PipelineRegistry;
 
   const { data: buyerOpps, isLoading: isLoadingBuyers } = useQuery({
     queryKey: ghl.opps({ pipelineId: buyerPipeline?.pipelineId, q: debouncedSearch }),
@@ -51,9 +52,9 @@ export default function DesktopTransactionsView() {
 
     // Filter to "Under Contract" or later
     all = all.filter((o: any) => {
-      const stageName = PipelineRegistry.stageLabel(o.pipelineStageId).toLowerCase();
-      const pos = PipelineRegistry.stagePosition(o.pipelineStageId);
-      return pos >= 3 || stageName.includes('contract') || stageName.includes('firm') || stageName.includes('close');
+      const pos = registry.stagePosition(o.pipelineStageId);
+      const ucPos = registry.underContractPosition(o.pipelineId || '');
+      return ucPos !== -1 && pos >= ucPos;
     });
 
     if (side !== 'all') {
@@ -124,7 +125,7 @@ export default function DesktopTransactionsView() {
       cell: ({ row }: any) => (
         <div className="flex items-center gap-2">
           <StageDot stageId={row.original.pipelineStageId} />
-          <span className="text-sm truncate">{PipelineRegistry.stageLabel(row.original.pipelineStageId)}</span>
+          <span className="text-sm truncate">{registry.stageLabel(row.original.pipelineStageId)}</span>
         </div>
       )
     }
