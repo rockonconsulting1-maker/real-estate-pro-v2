@@ -1,297 +1,167 @@
-# TASKS.md — Remediation Plan (Dev Agent Instructions)
+# TASKS.md — Remediation Plan v2 (AI Dev Agent Instructions)
 
-**Generated:** 2026-07-06 from the full-repo review; **updated same day** with the deep-pass findings (`REVIEW_REPORT.md` §9).
-**Supersedes:** the original master build checklist (preserved in git history at commit `34078cb`).
+**Generated:** 2026-07-07 from a full verification pass against the codebase (supersedes the prior TASKS.md, preserved in git history).
+**Scope:** This list contains **only work that is still outstanding, broken, or partial** as verified against the running toolchain. Tasks already completed in prior work (A2–A5, A7, A8, B1–B5, C1, C2, C7, C9, C10, C11, D4, E2, E4, E5, F1, F2) are intentionally omitted — do not redo them.
 
-**Context:** The app builds and typechecks, but the GHL service layer has wrong API endpoints (custom objects, custom fields/tags, message send, calendar appointments, users), a bootstrap race condition, ~10 features claimed done but missing, 338 lint errors, and repo-hygiene problems. Work the tasks in order — Workstream A and B unblock everything else.
+## Current toolchain state (baseline for this plan)
 
-## Rules for the Dev Agent (apply to every task)
-
-1. **Verify endpoints against GHL API 2.0 docs** (https://marketplace.gohighlevel.com/docs/) before changing them; the paths below are from the docs and the original spec, but confirm the `Version` header and body shape per endpoint.
-2. All GHL calls stay inside `src/lib/ghl/services/*` via `ghlFetch` — never `fetch` in components.
-3. After each task: `bun run typecheck && bun run lint && bunx vitest run && bun run build` must pass (lint may still fail globally until D1 lands; do not add *new* errors).
-4. Add/extend a vitest test when a task touches pure logic (services, registry, helpers).
-5. Preserve existing loading/empty/error state patterns (`Skeleton`, `EmptyState`, `ErrorState`).
-6. Commit per task with message `fix(<area>): <task-id> <summary>`.
-
-Definition of Done per task = code change + acceptance criteria met + toolchain green + committed.
-
----
-
-# WORKSTREAM A — GHL API corrections (CRITICAL — app is non-functional against live data without these)
-
-## A1. Fix Custom Objects endpoints and schema keys
-**File:** `src/lib/ghl/services/objects.ts`
-**Problem:** Uses `POST /custom-objects/{key}/records/search` with bare keys (`my_listings`). Real API: `POST /objects/{schemaKey}/records/search` with fully-qualified keys (`custom_objects.my_listings`).
-**Instructions:**
-1. Change all five methods in `objectsService` from `/custom-objects/...` to `/objects/...`.
-2. Add a constant map at top of file: `export const OBJECT_KEYS = { listings: 'custom_objects.my_listings', properties: 'custom_objects.properties', offers: 'custom_objects.real_estate_offer' } as const;` and use it in the three thin wrappers (`myListingsService`, `mlsPropertiesService`, `offersService`).
-3. In `searchRecords`, rename body field `limit` → `pageLimit` and add `page` support; keep `searchAfter` cursor support. Confirm exact body shape in docs ("Search Object Records").
-4. Grep the codebase for **every** caller passing keys directly to `objectsService.searchRecords(...)` and switch them to the wrappers/`OBJECT_KEYS`. Known inconsistent call sites: `src/components/shared/global-search.tsx:69` (bare `'properties'`) and `src/features/reports/desktop-view.tsx` + `mobile-view.tsx` (already-prefixed `'custom_objects.my_listings'`) — today these two conventions contradict each other, so one is always broken.
-**Acceptance:** All listings/MLS/offers queries hit `/objects/custom_objects.*` paths; no string-literal object keys remain outside `OBJECT_KEYS`; add a unit test asserting the built path/body for `searchRecords`.
-
-## A2. Fix custom fields / custom values / tags / medias endpoints
-**File:** `src/lib/ghl/services/misc.ts`
-**Problem:** `/custom-fields/`, `/custom-values/`, `/tags/`, `/medias/` are not valid GHL endpoints.
-**Instructions:**
-1. `customFieldsService.list` → `GET /locations/{locationId}/customFields` (response key `customFields`). If object-scoped fields are needed for custom objects, also add `getByObjectKey(objectKey)` → `GET /custom-fields/object-key/{objectKey}?locationId=...` (verify in docs).
-2. `customValuesService.list` → `GET /locations/{locationId}/customValues` (response key `customValues`).
-3. `tagsService.list` → `GET /locations/{locationId}/tags` (response key `tags`).
-4. `mediasService.list` → `GET /medias/files` with `query: { locationId, ... }` (verify param name, possibly `altId`/`altType`).
-**Acceptance:** bootstrap fields/tags resolve (no silent rejection); tag-driven filters (temperature, `type:*`) receive real definitions.
-
-## A3. Fix conversations message send, channel types, and mark-read
-**Files:** `src/lib/ghl/services/conversations.ts`, `src/features/conversations/components/thread-view.tsx`
-**Problem:** Send posts to read-only `POST /conversations/{id}/messages` with numeric `type`; `PUT /conversations/{id}/read` doesn't exist.
-**Instructions:**
-1. `sendMessage` → `POST /conversations/messages` with body per docs: `{ type: 'SMS' | 'Email' | 'WhatsApp' | 'IG' | 'FB' | 'Live_Chat', contactId, message }` for SMS-like channels; for Email include `html` (or `message`), `subject`, and `emailFrom` if required. Signature: `sendMessage(data: SendMessagePayload)` — it no longer needs `conversationId`, it needs `contactId`.
-2. In `thread-view.tsx`, replace numeric channel state (`1/2/4`) with a string union `'SMS' | 'Email' | 'WhatsApp'`; pass `contactId` (already derived at line ~56) into the mutation; keep optimistic bubble logic.
-3. `markRead` → `PUT /conversations/{conversationId}` with `{ unreadCount: 0 }` (verify field name in "Update Conversation" docs).
-4. Add "Log Call" action support (`type: 'Call'` inbound/outbound per docs) — it was claimed in the original 10.2 task.
-**Acceptance:** SMS and Email send succeed against a live sub-account (or, without live creds, payload matches docs and a unit test asserts endpoint+body); mark-read clears unread badge.
-
-## A4. Fix calendar appointment endpoints and events query params
-**File:** `src/lib/ghl/services/calendars.ts`
-**Instructions:**
-1. `createAppointment` → `POST /calendars/events/appointments`.
-2. `getAppointment`/`updateAppointment`/`deleteAppointment` → `/calendars/events/appointments/{eventId}` (DELETE may be `/calendars/events/{eventId}` — verify in docs).
-3. `eventsByRange`: `GET /calendars/events` requires `locationId`, `startTime`, `endTime` **in epoch milliseconds**, plus one of `userId` | `calendarId` | `groupId`. Change signature to accept `{ start: Date; end: Date; calendarId?: string; userId?: string }`, convert to millis, and require a calendarId/userId (thread the user's default calendar from `ghl_credentials.default_calendar_id`, falling back to iterating bootstrap calendars).
-4. Update all callers (calendar views, dashboard next-up widget, contact appointments tabs) for the new signature.
-**Acceptance:** calendar week/day/month views and event modals build correct requests; unit test asserts millis conversion and required params.
-
-## A5. Fix users list endpoint for sub-account PIT
-**File:** `src/lib/ghl/services/users.ts`
-**Instructions:** Replace `GET /users/search?locationId=...` (requires agency `companyId`) with `GET /users/` + `query: { locationId }`. Keep `get(id)`. Verify response key (`users`).
-**Acceptance:** Team directory and assigned-to dropdowns populate with a location-scoped PIT.
-
-## A6. Contacts: server-side tag filtering + pagination correctness
-**File:** `src/lib/ghl/services/contacts.ts` (+ callers in `src/features/contacts/*`)
-**Problem:** Tag filter is applied client-side to the current page only — silently drops matches; role filter values in `desktop-view.tsx`/`mobile-view.tsx` (`'Vendor'`, `'SOI'`) don't match the `type:*` tag taxonomy.
-**Instructions:**
-1. Migrate `search()` to `POST /contacts/search` with proper `filters` (tag filter group) and `searchAfter` pagination per docs; remove the client-side tag filter.
-2. Update `ROLE_FILTERS` in both contact views to the real taxonomy (`type:vendor`, `type:soi`, `type:re-agent`, `type:team`, `lifecycle:past-client`, `lifecycle:lead`, `lifecycle:client`) — confirm actual tags used in the sub-account; keep labels human-readable.
-**Acceptance:** filtering by role returns matches beyond page 1; no client-side tag filtering remains.
-
-## A7. Opportunities search params hygiene
-**File:** `src/lib/ghl/services/opportunities.ts`
-**Instructions:** The `search()` spread `{ locationId, ...params }` sends `filters` objects into the query string (`[object Object]`). Whitelist the documented `GET /opportunities/search` params: `q`, `pipeline_id`, `pipeline_stage_id`, `assigned_to`, `contact_id`, `status`, `date`, `limit`, `page`, `location_id` (verify snake_case vs camelCase in docs — the API uses `location_id` style for this endpoint). Map the service's camelCase inputs to the documented param names explicitly. Remove the `filters?: any` param or implement it properly.
-**Acceptance:** built query string contains only documented params; unit test covers mapping.
-
-## A8. Fix dashboard KPI queries (filters arrays are silently discarded)
-**Files:** `src/features/dashboard/widgets/kpi-grid.tsx` (+ mobile dashboard equivalents), `src/features/dashboard/widgets/new-leads.tsx`, `needs-attention.tsx`, `pending-offers.tsx`
-**Problem (REVIEW_REPORT §9 S6):** widgets pass `filters: [{ field: 'status', operator: 'eq', value: 'open' }]`-style arrays to `opportunitiesService.search`, which serializes them into the GET query string as `[object Object]`. Every KPI count (Active Leads, Active Clients, New Leads 7d, Under Contract base query) is unfiltered or rejected.
-**Instructions:**
-1. After A7 lands, rewrite each widget query using the documented params (`status: 'open'`, `pipeline_id`, `date`), not filter arrays.
-2. "New Leads this week": the GET endpoint has no `createdAt >= X` param — either use the `date` param if it supports ranges (verify docs) or fetch page 1 sorted by created date and count client-side with an explicit "approximate" note.
-3. Offers KPIs (`offersService.search({ filters })`) go through the objects **POST** search — verify the documented filter body shape for object records search and use it (or filter client-side on fetched pages, documented as approximation).
-4. "Under Contract" KPI: replace the `pos >= 3` heuristic with the C11 stage-resolution helper.
-**Acceptance:** each KPI issues a request with only documented params and returns a correct count against seeded test data; no `filters` array reaches a GET query string anywhere (add a lint-style unit test on the service).
-
----
-
-# WORKSTREAM B — Bootstrap & credentials lifecycle (CRITICAL)
-
-## B1. Fix bootstrap race (credentials set after bootstrap fires)
-**Files:** `src/app/layout.tsx`, `src/hooks/use-ghl-credentials.ts`, `src/hooks/use-bootstrap.ts`, `src/lib/ghl/client.ts`
-**Problem:** `useBootstrap` is enabled the same render credentials arrive, but `setGhlCredentials` runs in a later effect → first bootstrap runs with null PIT, `allSettled` swallows the failures, and empty results are cached for 24h (empty `PipelineRegistry`, blank app).
-**Instructions:**
-1. Move credential injection into the data path: in `useGhlCredentials`'s `queryFn`, call `setGhlCredentials(data.pit_token, data.location_id)` before returning (and `setGhlCredentials(null, null)` when no row). Keep the layout effect as a safety net or remove it.
-2. In `useBootstrap`, gate on module-level credentials too: `enabled: isConfigured && !!getGhlCredentials().pit`.
-3. Make bootstrap failure loud: if **all** six sub-fetches reject, throw so the query errors (splash can show retry); keep `isPartial` for partial failures.
-4. On sign-out (`auth-provider`), call `setGhlCredentials(null, null)` and `queryClient.clear()`.
-**Acceptance:** cold sign-in on a fresh profile never fires GHL calls without a PIT; a manual test (mock `getGhlCredentials`) proves ordering; full-failure bootstrap shows an error/retry instead of an empty app.
-
-## B2. Surface `isPartial` bootstrap state
-**Files:** `src/app/layout.tsx`, `src/hooks/use-bootstrap.ts`
-**Instructions:** When `data.isPartial` is true, render a dismissible warning banner in the shell ("Some workspace data failed to load — Retry") that calls `refetch()`. List which groups failed (extend the hook to return `failed: string[]`).
-**Acceptance:** killing one endpoint (e.g. wrong tags path pre-A2) yields a visible banner with working retry, not a silent empty state.
-
-## B3. Improve 401 handling (no hard redirect)
-**Files:** `src/lib/ghl/client.ts`, `src/app/layout.tsx`
-**Instructions:** Replace `window.location.href = '/settings/integrations'` with: sonner toast ("GHL credentials invalid — update in Settings ▸ Integrations" with action button) + `react-router` `navigate()` only when the user confirms, and debounce the event so N parallel 401s produce one toast. Remove the unused `toast` import in `client.ts` or use it here.
-**Acceptance:** a 401 shows one toast, no full page reload, in-progress SPA state preserved.
-
-## B4. Implement documented `VITE_GHL_*` dev fallbacks (or remove them)
-**Files:** `src/hooks/use-ghl-credentials.ts`, `.env.example`, `README.md`
-**Instructions:** `.env.example`/README document `VITE_GHL_PIT`/`VITE_GHL_LOCATION_ID` dev fallbacks but nothing reads them. In `useGhlCredentials`, when Supabase has no row **and** `import.meta.env.DEV` and both vars are set, return the env credentials (never in production builds). Otherwise delete the vars from `.env.example` and README.
-**Acceptance:** behavior matches documentation; production build ignores env fallbacks.
-
-## B5. Honor the `?next=` redirect after sign-in
-**Files:** `src/features/auth/sign-in.tsx` (line ~47), optionally `sign-up.tsx`/`confirm.tsx`
-**Problem (REVIEW_REPORT §9 S3):** `ProtectedRoute` redirects to `/auth/sign-in?next=<intended path>`, but sign-in hardcodes `navigate('/')` — the preserved path is dropped.
-**Instructions:** Read `next` via `useSearchParams`; after successful sign-in, `navigate(next, { replace: true })` when `next` is a **same-origin relative path starting with `/`** (reject `//`, absolute URLs, and `/auth/*` to prevent open-redirect/loops); fall back to `/`. Apply the same logic to the post-email-confirm redirect if applicable.
-**Acceptance:** visiting `/offers/123` signed-out → sign-in → lands on `/offers/123`; malicious `?next=https://evil.example` falls back to `/`.
-
----
-
-# WORKSTREAM C — Features claimed done but missing (restore parity with original checklist)
-
-## C1. Contacts directory polish (original Phase 5.1 — was honestly unchecked)
-**Files:** `src/features/contacts/desktop-view.tsx`, `mobile-view.tsx`
-**Instructions:** Add alpha-group section headers in the sorted-by-name list and a right-edge A–Z index scrubber on mobile (tap/drag scrolls the virtualized list via `scrollToIndex`). Keep quick call/text buttons per row on mobile (verify they exist; add `tel:`/`sms:` links if not).
-**Acceptance:** name-sorted list shows letter groups; scrubber jumps correctly; 44px touch targets.
-
-## C2. Conversations composer: attachments + templates
-**Files:** `src/features/conversations/components/thread-view.tsx`, `src/lib/ghl/services/misc.ts` (medias), new `src/lib/ghl/services/templates.ts` if needed
-**Instructions:**
-1. Attachments: file picker → upload via medias API (`POST /medias/upload-file`, multipart — note `ghlFetch` JSON-encodes bodies; add a `rawBody` option or a dedicated upload helper) → include returned URL(s) in send payload `attachments: string[]`.
-2. Templates: load SMS/Email templates (`GET /locations/{locationId}/templates` — verify endpoint) into a dropdown; inserting a template merges custom values via `customValuesService`.
-**Acceptance:** send with an attachment succeeds (payload verified against docs); templates dropdown inserts body text.
-
-## C3. Desktop calendar drag-to-reschedule
-**File:** `src/features/calendar/desktop-view.tsx`
-**Instructions:** On the week/day time grid, make event blocks draggable vertically/horizontally (reuse `@dnd-kit/core`); on drop, compute new start/end, optimistic cache update, `calendarsService.updateAppointment` (post-A4 path), rollback + toast on error. Keep the existing mobile sheet-based reschedule.
-**Acceptance:** dragging an event updates its time optimistically and persists; failed update rolls back.
-
-## C4. Tasks desktop bulk-edit + mini-calendar scheduler
-**File:** `src/features/tasks/desktop-view.tsx` (+ `task-modals.tsx`)
-**Instructions:**
-1. Add a table-view toggle with row checkboxes; selection toolbar: Complete, Reschedule (date picker applies to all), Delete (confirm dialog). Batch via `Promise.allSettled` over `tasksGlobalService.update/delete`, one summary toast.
-2. Add the "today mini-calendar scheduler" panel: unscheduled/today tasks draggable onto hour slots → sets `dueDate`.
-**Acceptance:** multi-select bulk actions work with optimistic updates; drag onto a slot sets the due time.
-
-## C5. Kanban drag-and-drop accessibility (ARIA)
-**Files:** `src/features/leads/components/kanban-board.tsx`, `src/features/clients/components/kanban-board.tsx`, `src/features/listings/*` board if present
-**Instructions:** Use dnd-kit's accessibility props: `announcements` for screen readers, `aria-roledescription="sortable"` on cards, `role="list"`/`aria-label` per lane, keyboard sensor (`KeyboardSensor`) so cards can be moved with arrow keys.
-**Acceptance:** axe/devtools shows labeled lanes/cards; keyboard-only stage move works.
-
-## C6. Route/row hover prefetch
-**Files:** `src/components/desktop/shell.tsx` (nav items), list views (`leads`, `clients`, `contacts`), `src/hooks/use-query-helpers.ts`
-**Instructions:** Implement the claimed prefetch: on desktop nav-item `onMouseEnter`, `queryClient.prefetchQuery` the module's page-1 list; on list-row hover, prefetch the detail query (helpers already exist — wire them). Also seed detail caches from list results (`setQueryData` per record) in the main list hooks.
-**Acceptance:** hovering a nav item fires the page-1 fetch (visible in devtools); opening a hovered row renders instantly from cache.
-
-## C7. Bootstrap custom-object schemas
-**Files:** `src/hooks/use-bootstrap.ts`, `src/lib/ghl/services/objects.ts`
-**Instructions:** Add `getSchema(objectKey)` → `GET /objects/{key}` (verify path) and fetch the 3 schemas in the bootstrap parallel batch (`ghl.schemas()` key, 24h stale). Expose via bootstrap result for field editors.
-**Acceptance:** bootstrap loads 3 schemas; listing/offer field editors can read field definitions.
-
-## C8. Account deletion flow (or de-scope honestly)
-**Files:** `src/features/settings/components/data-tab.tsx`, `supabase/` (new edge function)
-**Instructions:** Preferred: add a Supabase Edge Function `delete-account` (service-role `auth.admin.deleteUser`, verifies JWT of caller, cascades via existing FKs), call it from the confirm dialog, then sign out. If edge functions are out of scope for v1, replace the fake flow with honest UI copy and remove the claim.
-**Acceptance:** either a working delete (user removed, rows cascaded, signed out) or truthful UI + doc note.
-
-## C9. Fix `react-hooks/exhaustive-deps` churn in thread view
-**File:** `src/features/conversations/components/thread-view.tsx` (line ~47)
-**Instructions:** Wrap the `messages` derivation in `useMemo` as the lint warning says; verify the scroll-to-bottom effect doesn't refire on every 15s poll unless messages actually changed (compare last message id).
-**Acceptance:** warning gone; no scroll jump on idle polls.
-
-## C10. Reports: paginate the source data and fix date semantics
-**Files:** `src/features/reports/desktop-view.tsx`, `mobile-view.tsx`
-**Problem (REVIEW_REPORT §9 S5):** all analytics (GCI, deal volume, funnel, source attribution, avg DOM) are computed from a single page of 100 opportunities/contacts/listings — silently wrong beyond 100 records. GCI/volume also bucket won deals by `createdAt` instead of close date.
-**Instructions:**
-1. Add a `fetchAllPages(fetchPage, { maxPages: 10 })` helper (respects the rate limiter; stops at cursor end or cap) and use it for the three report sources; surface a "showing first N records" notice if the cap is hit.
-2. Base GCI and deal-volume-by-month on the won date — use `lastStatusChangeAt`/`updatedAt` if the API exposes it (verify field in docs), else document `updatedAt` as the approximation.
-3. Cache the aggregated result under a dedicated query key (`['reports', dateRange]`, staleTime ≥ 5 min).
-**Acceptance:** with >100 seeded records, totals reflect all pages; changing date range re-buckets by close-date basis; page cap notice renders when applicable.
-
-## C11. Resolve "Under Contract" by stage name, not position ≥ 3
-**Files:** `src/lib/pipeline-registry.ts`, `src/features/transactions/desktop-view.tsx` (+ mobile), `src/features/dashboard/widgets/kpi-grid.tsx`
-**Problem (REVIEW_REPORT §9 S8):** transactions and the Under Contract KPI treat stage position ≥ 3 as under-contract; with 10-stage Buyer / 9-stage Seller pipelines that misclassifies active-search clients as transactions.
-**Instructions:** Add `Registry.underContractPosition(pipelineId): number` that finds the first stage whose name matches /under contract|conditional|firm|pending|clos/i and returns its position (fallback: `stages.length - 3`, logged). Replace all `pos >= 3` heuristics with `pos >= underContractPosition(o.pipelineId)`. Unit-test with realistic stage lists.
-**Acceptance:** transactions list contains only at/after-under-contract opportunities for both pipelines; heuristic covered by tests.
-
-## C12. Settings ▸ Display: add the claimed density control (or de-scope)
-**File:** `src/features/settings/components/display-tab.tsx`
-**Instructions:** Theme, default landing page, and calendar-view selects exist; **density** (comfortable/compact) does not. Either implement it (persist in `profiles.preferences`, toggle a `data-density` attribute consumed by row-height/padding tokens) or remove the claim from docs. Implementing is preferred — lists are the core surface of this app.
-**Acceptance:** density switch visibly tightens list/table row heights app-wide and persists across sessions.
-
----
-
-# WORKSTREAM D — Code quality, lint, tests
-
-## D1. Eliminate the 338 lint errors (typed service layer)
-**Files:** `src/lib/ghl/**`, `src/lib/queryKeys.ts`, `src/types/ghl.ts`, feature files listed by `bun run lint`
-**Instructions:**
-1. Replace `ghlFetch<any>` with typed response interfaces inferred from the existing Zod schemas in `src/types/ghl.ts` (add missing schemas: association key/relation, custom field, tag, media file, meta/pagination).
-2. `queryKeys.ts`: type `params` as `Record<string, unknown> | undefined` or specific param interfaces.
-3. For genuinely dynamic GHL payloads use `unknown` + Zod parse, not `any`.
-4. Fix the 4 warnings (3 fast-refresh mixed exports → move constants to separate files; 1 exhaustive-deps → C9).
-5. `src/pages/GhlSmoke.tsx`: type it or delete it (see E3).
-**Acceptance:** `bun run lint` exits 0. Do this incrementally per directory; don't blanket-disable rules.
-
-## D2. Real test coverage for the fixed integration layer
-**Files:** new tests under `src/lib/ghl/__tests__/`, `src/lib/__tests__/`
-**Instructions:** Add vitest suites (mock `fetch`): (a) `ghlFetch` — auth header, Version header, 429 retry w/ Retry-After, 401 event, dedupe; (b) each service's endpoint path + body for the corrected endpoints (regression-lock A1–A7); (c) `PipelineRegistry` name matching (note: `byName('buyer')` matcher list, ensure "Buyer Pipeline"/"Buyer Transaction" both resolve and "Lead" doesn't falsely match "Seller lead" etc.); (d) contacts/opportunities param mapping. Delete `src/test/example.test.ts`.
-**Acceptance:** ≥ 20 meaningful assertions; suite green in CI-mode (`vitest run`).
-
-## D3. Add Prettier (claimed in original 0.1) or drop the claim
-**Instructions:** Add `prettier` + config consistent with existing style, `format` script, and run it once repo-wide in a dedicated commit. Alternatively document that formatting is ESLint-only.
-**Acceptance:** `bun run format --check` (or documented decision) passes.
-
-## D4. Shared hook fixes
-**Files:** `src/hooks/use-query-helpers.ts`, `src/hooks/use-surface.ts`
-**Instructions (REVIEW_REPORT §9 S10/S11):**
-1. `useOptimisticMutation`: capture the caller's `onMutate` return value and merge it into the returned context (`return { previousData, ...(callerContext ?? {}) }`) so composed rollback data isn't lost; pass the full context through to the caller's `onError`/`onSettled`.
-2. `useSurface`: initialize state from `window.matchMedia('(min-width: 1024px)').matches` in the `useState` initializer to kill the desktop-flash-on-mobile frame.
-**Acceptance:** unit test proves caller `onMutate` context reaches `onError`; no layout flash on a mobile-width first paint.
-
----
-
-# WORKSTREAM E — Security & repo hygiene
-
-## E1. Untrack `.env` (`.gitignore` already added)
-**Instructions:**
-1. ~~Create `.gitignore`~~ — **done** (commit `5efe08d`).
-2. `git rm --cached .env` and commit. Keep `.env.example` (placeholders only — remove the real location ID currently in `.env`; `.env.example` is already blank, good).
-3. Note in README that the previously committed Supabase publishable key is public-by-design but the Supabase project should confirm RLS coverage (it exists) and the GHL location ID should be treated as non-secret-but-private.
-**Acceptance:** `git ls-files | grep .env` returns only `.env.example`; fresh clone builds after copying `.env.example`.
-
-## E2. Offline banner vs mobile tab bar
-**File:** `src/app/layout.tsx`
-**Instructions:** The fixed bottom offline banner (`z-[100]`) covers the mobile TabBar/FAB. Position it above the tab bar on mobile (respect safe-area inset + tab bar height) or render as a top banner.
-**Acceptance:** with offline simulated, tab bar remains tappable on mobile viewport.
-
-## E3. Remove or gate debug routes
-**File:** `src/app/router.tsx` (lines ~89–96), `src/pages/DesignPreview.tsx`, `src/pages/GhlSmoke.tsx`
-**Instructions:** Wrap `/design-preview` and `/ghl-smoke` registration in `if (import.meta.env.DEV)` (build the route array conditionally) so they're tree-shaken from production, or delete the pages.
-**Acceptance:** production build contains no chunk for these pages; dev still serves them.
-
-## E4. Lock down the avatars storage bucket (SECURITY)
-**File:** new migration `supabase/migrations/0005_avatars_policies_fix.sql`
-**Problem (REVIEW_REPORT §9 S1):** the 0004 policies allow **anyone** (any role, no ownership check) to upload/update/delete any object in the `avatars` bucket.
-**Instructions:**
-1. Drop the three write policies from 0004 ("Anyone can upload/update/delete...").
-2. Recreate them `to authenticated` with an ownership path convention — store avatars at `{auth.uid()}/avatar.<ext>` and check `(storage.foldername(name))[1] = auth.uid()::text` in `with check` (insert) and `using` (update/delete). Keep public read.
-3. Update `profile-tab.tsx` upload path to match the `{uid}/...` convention if it doesn't already.
-**Acceptance:** authenticated user A cannot write to user B's avatar path (verify with two test users or a SQL policy test); avatar upload/replace still works in the UI.
-
-## E5. Provision the `documents` bucket + storage RLS via migration
-**File:** new migration `supabase/migrations/0006_documents_bucket.sql`
-**Problem (REVIEW_REPORT §9 S2):** the bucket is only mentioned in a "create it in the dashboard" comment — fresh environments have a broken Docs vault and no defined storage-level access control.
-**Instructions:** Insert bucket `documents` (private, `public = false`). Add owner-scoped policies `to authenticated` for select/insert/update/delete where `bucket_id = 'documents' and (storage.foldername(name))[1] = auth.uid()::text` — this matches `storage.ts`, which already writes to `{user_id}/{doc_id}`. Remove the dashboard-instructions comment from 0002.
-**Acceptance:** on a fresh Supabase project with migrations applied, upload → signed-url download → delete round-trips; a second user cannot read the first user's file path.
-
----
-
-# WORKSTREAM F — Performance & polish
-
-## F1. Split the 1.37 MB main chunk
-**File:** `vite.config.ts`
-**Instructions:** Add `build.rollupOptions.output.manualChunks` separating at least: `recharts` (only reports/dashboard use it — additionally lazy-import the chart components), `@supabase/supabase-js`, `react-dom`+router, radix primitives. Target: no chunk > 600 KB minified.
-**Acceptance:** build output shows main chunk < 600 KB min; reports still render.
-
-## F2. Real splash progress (optional, small)
-**File:** `src/app/layout.tsx`
-**Instructions:** Drive `Progress` from actual settled count of the 6 bootstrap fetches (expose `settledCount` from `use-bootstrap` via `Promise.allSettled` progress wrapper) instead of a fake interval.
-**Acceptance:** progress reflects real load; completes at 100% when bootstrap settles.
-
-## F3. Reconcile documentation
-**Files:** `README.md`, `AGENTS.md`
-**Instructions:** After A–E land: update README scopes list if endpoints changed scope needs (e.g. `locations/customFields.readonly`, `medias.readonly/write`, `templates.readonly` for C2), document the dev fallback behavior from B4, document the `documents` upload-progress limitation, and remove/update claims that no longer hold.
-**Acceptance:** README instructions produce a working setup on a clean machine.
-
----
-
-## Suggested execution order
-
-| Order | Tasks | Why |
+| Gate | Status | Notes |
 |---|---|---|
-| 1 | E1, E4, E5 | Untrack `.env`; close the open avatar-bucket policies; make Docs vault provisionable |
-| 2 | A1–A8 | App is non-functional against live GHL until these land (A8 depends on A7) |
-| 3 | B1–B3, B5 | First-load correctness, visible failures, working sign-in redirect |
-| 4 | D2 (partial, alongside A) | Regression-lock every endpoint fix as it lands |
-| 5 | C1–C12 | Feature parity + correct analytics/transactions classification |
-| 6 | D1, D3, D4 | Lint to zero + shared-hook fixes once churn settles |
-| 7 | B4, E2, E3, F1–F3 | Hygiene + performance + docs |
+| `bun run typecheck` | ✅ passes | keep it green |
+| `bun run lint` | ❌ 293 problems | 291 `no-explicit-any` errors, 3 `react-refresh`, 2 `exhaustive-deps` → **T-D1** |
+| `bunx vitest run` | ❌ 1 failing | `services.test.ts` objectsService body field → **T-A1** |
+| `bun run build` | ✅ passes | largest chunk 399 KB (< 600 KB) |
 
-**Verification gate for release:** `typecheck` ✅ · `lint` ✅ 0 errors · `vitest run` ✅ with real suites · `build` ✅ no chunk > 600 KB · manual smoke of each module against a live GHL sub-account (leads board drag, client detail tabs, listing/offer/MLS lists, send SMS + Email, calendar CRUD, tasks bulk edit, docs upload/download, reports render + CSV, settings save).
+## Rules for the AI Dev Agent (apply to every task)
+
+1. Verify GHL endpoints/body shapes against GHL API 2.0 docs (https://marketplace.gohighlevel.com/docs/) before changing them.
+2. All GHL calls stay inside `src/lib/ghl/services/*` via `ghlFetch` — never `fetch` in components.
+3. After each task, all four must hold (no *new* failures): `bun run typecheck && bun run lint && bunx vitest run && bun run build`. Lint may remain non-zero until **T-D1** lands, but do not add new lint errors.
+4. Add/extend a vitest test whenever a task touches pure logic (services, registry, helpers).
+5. Preserve existing loading/empty/error patterns (`Skeleton`, `EmptyState`, `ErrorState`) and optimistic-update patterns (`useOptimisticMutation`).
+6. Commit per task: `fix(<area>): <task-id> <summary>`. Never commit `node_modules/`, `dist/`, or `*.tsbuildinfo` (now covered by `.gitignore`).
+
+**Definition of Done per task** = code change + acceptance criteria met + toolchain not regressed + committed.
+
+**Suggested order:** T-A1 → T-E1 → T-D1 → T-BUGS → T-C-features (C3/C4/C5/C6/C8/C12) → T-E3 → T-D3 → T-F3.
+
+---
+
+# WORKSTREAM T-A — Broken integration (unblocks the test gate)
+
+## T-A1. Fix custom-object search body field (`limit` → `pageLimit`)
+**File:** `src/lib/ghl/services/objects.ts` (line ~25)
+**Problem:** `searchRecords` accepts a `pageLimit` param but writes it to the body as `limit`. The regression test `src/lib/ghl/__tests__/services.test.ts` asserts the body carries `pageLimit`, so **the test suite is currently red**, and the payload contradicts the documented "Search Object Records" body.
+**Instructions:**
+1. In `searchRecords`, set `body.pageLimit = params.pageLimit ?? 20` (drop `body.limit`). Confirm the exact field name (`pageLimit` vs `limit`) in the GHL "Search Object Records" docs and match it; update the test to match the confirmed truth if docs say otherwise.
+2. Keep `page` and `searchAfter` cursor support.
+**Acceptance:** `bunx vitest run` is fully green; the built body for `searchRecords` matches the documented field name.
+
+## T-A6. Contacts search pagination uses cursor (minor)
+**File:** `src/lib/ghl/services/contacts.ts`
+**Problem:** `search()` correctly moved to `POST /contacts/search` with a tag filter group, but paginates with `page`/`limit` instead of the documented `searchAfter` cursor — deep pages may be unreliable.
+**Instructions:** Switch pagination to `searchAfter` per docs; expose the cursor from `meta` back to callers (`use-ghl-infinite`). Keep the tag filter group.
+**Acceptance:** paging past page 1 returns correct, non-overlapping results; unit test asserts the cursor is threaded.
+
+---
+
+# WORKSTREAM T-C — Features claimed done but missing/partial
+
+## T-C3. Desktop calendar drag-to-reschedule
+**File:** `src/features/calendar/desktop-view.tsx`
+**Status:** Not implemented (no dnd on the desktop grid).
+**Instructions:** On the week/day time grid, make event blocks draggable (reuse `@dnd-kit/core`); on drop compute new start/end, apply an optimistic cache update, call `calendarsService.updateAppointment`, and roll back + toast on error. Keep the existing mobile sheet-based reschedule.
+**Acceptance:** dragging an event updates its time optimistically and persists; a failed update rolls back with a toast.
+
+## T-C4. Tasks desktop bulk-edit + mini-calendar scheduler
+**File:** `src/features/tasks/desktop-view.tsx` (+ `task-modals.tsx`)
+**Status:** Not implemented (current view is a kanban with a per-row complete checkbox only).
+**Instructions:**
+1. Add a table-view toggle with row checkboxes and a selection toolbar: **Complete**, **Reschedule** (date picker applied to all), **Delete** (confirm dialog). Batch via `Promise.allSettled` over `tasksGlobalService.update/delete` with one summary toast.
+2. Add a "today mini-calendar scheduler" panel: unscheduled/today tasks draggable onto hour slots → sets `dueDate`.
+**Acceptance:** multi-select bulk actions work with optimistic updates; dragging a task onto a slot sets its due time.
+
+## T-C5. Kanban drag-and-drop accessibility (ARIA)
+**Files:** `src/features/leads/components/kanban-board.tsx`, `src/features/clients/components/kanban-board.tsx`, and any `src/features/listings/*` board.
+**Status:** Partial — `KeyboardSensor` exists in the **leads** board only; no `announcements`, `aria-roledescription`, or `role="list"` anywhere; the **clients** board has no `KeyboardSensor`.
+**Instructions:** Add dnd-kit accessibility to every board: `announcements` for screen readers, `aria-roledescription="sortable"` on cards, `role="list"` + `aria-label` per lane, and a `KeyboardSensor` (with `sortableKeyboardCoordinates`) so cards move via arrow keys.
+**Acceptance:** axe/devtools shows labeled lanes and cards; keyboard-only stage moves work on **both** leads and clients boards.
+
+## T-C6. Wire route/row hover prefetch
+**Files:** `src/components/desktop/shell.tsx` (nav items), list views (`leads`, `clients`, `contacts`), `src/hooks/use-query-helpers.ts`
+**Status:** Not wired — the prefetch helper exists in `use-query-helpers.ts` but nothing calls it.
+**Instructions:** On desktop nav-item `onMouseEnter`, `queryClient.prefetchQuery` the module's page-1 list; on list-row hover, prefetch the detail query. Seed detail caches from list results (`setQueryData` per record) in the main list hooks.
+**Acceptance:** hovering a nav item fires the page-1 fetch (visible in React Query devtools); opening a hovered row renders instantly from cache.
+
+## T-C8. Account deletion — real flow or honest UI
+**Files:** `src/features/settings/components/data-tab.tsx`, `supabase/functions/delete-account/` (new)
+**Status:** Not done — no edge function; the confirm dialog states "This will permanently delete your account" but `handleDeleteAccount` only fires an error toast ("contact support"). This is misleading.
+**Instructions (pick one):**
+- **Preferred:** add a Supabase Edge Function `delete-account` (service-role `auth.admin.deleteUser`, verifies the caller's JWT, cascades via existing FKs); call it from the confirm dialog, then sign out.
+- **De-scope honestly:** if edge functions are out of scope for v1, change the dialog copy and button to reflect reality (e.g. "Request account deletion" that emails support) — no UI may claim an immediate permanent delete that doesn't happen.
+**Acceptance:** either a working delete (user removed, rows cascaded, signed out) **or** UI copy that matches actual behavior.
+
+## T-C12. Settings ▸ Display: density control + fix dead selects
+**File:** `src/features/settings/components/display-tab.tsx`
+**Status:** Not done. Density control is missing, and the "Default Landing Page" and "Default Calendar View" selects use `defaultValue` with no `onValueChange`/persistence — they silently do nothing.
+**Instructions:**
+1. Add a **density** control (comfortable/compact): persist in `profiles.preferences`, toggle a `data-density` attribute consumed by row-height/padding tokens.
+2. Wire the existing "Default Landing Page" and "Default Calendar View" selects to real state persisted in `profiles.preferences`, and actually honor them (landing redirect on sign-in; calendar initial view).
+**Acceptance:** density switch visibly tightens list/table rows app-wide and persists; landing-page and calendar-view selections persist and take effect across sessions.
+
+---
+
+# WORKSTREAM T-D — Code quality, lint, tests, formatting
+
+## T-D1. Eliminate lint errors (typed service layer)
+**Files:** `src/lib/ghl/**`, `src/lib/queryKeys.ts`, `src/types/ghl.ts`, and every file listed by `bun run lint`.
+**Status:** 291 `no-explicit-any` errors + 3 `react-refresh/only-export-components` + 2 `react-hooks/exhaustive-deps`.
+**Instructions:**
+1. Replace `any` in the GHL services and types with response interfaces inferred from the Zod schemas in `src/types/ghl.ts` (add missing schemas: association key/relation, custom field, tag, media file, template, meta/pagination). Use `unknown` + Zod parse for genuinely dynamic payloads.
+2. `queryKeys.ts`: type params as `Record<string, unknown> | undefined` or specific interfaces.
+3. Fix the 3 fast-refresh warnings (move constants out of component files) and the 2 exhaustive-deps warnings.
+4. Do it incrementally per directory; do not blanket-disable rules.
+**Acceptance:** `bun run lint` exits 0.
+
+## T-D2. Keep the integration test suite green and expand it
+**Files:** `src/lib/ghl/__tests__/`, `src/lib/__tests__/`
+**Status:** Suite is red until **T-A1** lands. Existing suites cover `ghlFetch`, some services, and `PipelineRegistry`.
+**Instructions:** After T-A1, ensure `bunx vitest run` is green, then add regression assertions for any endpoint/body touched by T-A6 and the param mapping in contacts/opportunities. Target ≥ 20 meaningful assertions total.
+**Acceptance:** `vitest run` green in CI mode with the expanded assertions.
+
+## T-D3. Add Prettier (or document the ESLint-only decision)
+**Files:** `package.json`, new `.prettierrc`
+**Status:** Not done — no `prettier` dep, no `format` script.
+**Instructions:** Add `prettier` + a config consistent with existing style and a `format` script; run it once repo-wide in a dedicated commit. Alternatively, document in README that formatting is ESLint-only and remove any Prettier claim.
+**Acceptance:** `bun run format --check` passes, or a documented decision is recorded.
+
+---
+
+# WORKSTREAM T-E — Security & repo hygiene
+
+## T-E1. Untrack `.env` and scrub the committed location ID
+**Files:** `.env` (tracked), `.env.example`, `README.md`
+**Status:** Not done — `.env` is still tracked and contains a real GHL location ID (`VITE_GHL_LOCATION_ID`). `.gitignore` now lists `.env`, but that does not untrack an already-committed file.
+**Instructions:**
+1. `git rm --cached .env` and commit.
+2. Ensure `.env.example` carries placeholders only (no real IDs/keys).
+3. Note in README that the previously committed Supabase publishable key is public-by-design, and that the GHL location ID should be treated as private (rotate the sub-account if warranted).
+**Acceptance:** `git ls-files | grep -E '\.env'` returns only `.env.example`; a fresh clone builds after copying `.env.example`.
+
+## T-E3. Keep debug pages out of the production bundle
+**File:** `src/app/router.tsx`
+**Status:** Partial — the `/design-preview` and `/ghl-smoke` routes are gated behind `import.meta.env.DEV`, but the page components are **statically imported** at the top of the file, so they still ship in the production bundle.
+**Instructions:** Convert `DesignPreview` and `GhlSmoke` to `React.lazy` dynamic imports referenced only inside the `import.meta.env.DEV` route branch (or delete the pages) so a production build tree-shakes them out.
+**Acceptance:** a production build contains no chunk referencing these pages; dev still serves them.
+
+---
+
+# WORKSTREAM T-BUGS — Deep-review defects (outside the original checklist)
+
+## T-BUGS1. Remove unused `toast` import in the GHL client
+**File:** `src/lib/ghl/client.ts` (line 1)
+**Problem:** `import { toast } from 'sonner'` is unused (401 handling now lives in `layout.tsx`). Dead code; will trip lint once T-D1 tightens rules.
+**Instructions:** Delete the import.
+**Acceptance:** import gone; typecheck/lint unaffected.
+
+## T-BUGS2. Bootstrap `failed[]` omits `tags`
+**File:** `src/hooks/use-bootstrap.ts`
+**Problem:** The partial-load `failed` array pushes every group **except** `tags`, so a tags-endpoint failure never surfaces in the T-B2 warning banner (tag-driven filters silently break).
+**Instructions:** Add `if (tags.status === 'rejected') failed.push('tags');`.
+**Acceptance:** killing the tags endpoint shows `tags` in the partial-load banner.
+
+---
+
+# WORKSTREAM T-F — Docs
+
+## T-F3. Reconcile documentation with reality
+**Files:** `README.md`, `AGENTS.md`, `FINDINGS.md`
+**Problem:** `FINDINGS.md` asserts "all critical and high-priority issues have been addressed across Workstreams A through F," which is inaccurate given the open items above.
+**Instructions:** After the workstreams above land, update README scopes if endpoints changed scope needs, document the `VITE_GHL_*` dev fallback and the `documents` upload limitation, and correct/remove claims (in `FINDINGS.md` and elsewhere) that no longer hold.
+**Acceptance:** README produces a working setup on a clean machine; no doc claims completion of work that is still open.
+
+---
+
+## Verification gate for release
+
+`typecheck` ✅ · `lint` ✅ 0 errors · `vitest run` ✅ green · `build` ✅ no chunk > 600 KB · `git ls-files | grep '\.env'` returns only `.env.example` · manual smoke of each module against a live GHL sub-account (leads/clients board drag + keyboard move, contact detail tabs, listing/offer/MLS lists, send SMS + Email + Log Call, calendar CRUD + desktop drag-reschedule, tasks bulk edit, docs upload/download, reports render + CSV, settings save incl. density).
