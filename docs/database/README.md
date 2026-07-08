@@ -20,8 +20,8 @@
 
 1. **Live GHL API schema** (`GET /objects/{key}?fetchProperties=true`) — always wins.
 2. `DATA_DICTIONARY.md` + `ASSOCIATIONS_REGISTRY.md` (this package) — canonical written record of #1.
-3. `Real Estate Pro CRM — Full Integration Schema.md` — retained for API quick-reference (Part 7) and history; its Part 2/3 field & association tables are superseded by this package.
-4. `GHL_Integration_Mapping.md` — retained for **screen → endpoint** mapping only. Its §18 field mapping, §19 association keys, §20 field dictionary, and §22 enum lists are **deprecated**; use `MIGRATION_MAP.md`.
+3. `INTEGRATION_SCHEMA.md` (repo root) — consolidated reference: object registry, tags, custom values, system-native objects, API quick reference. Replaces the legacy `Real Estate Pro CRM — Full Integration Schema.md`; its field/association tables defer to this package.
+4. `GHL_INTEGRATION_MAPPING.md` + `ENTITY_BREAKDOWN.md` (repo root) — **screen → endpoint → component/hook** mapping and entity/code ownership, using canonical keys. Replace the legacy `GHL_Integration_Mapping.md` and `Entity Breakdown.md`; their deprecated §18/§19/§20/§22 keys are mapped in `MIGRATION_MAP.md`. Code-alignment work: `SCHEMA_ALIGNMENT_TASKS.md`.
 
 ## Hard rules for AI agents (non-negotiable)
 
