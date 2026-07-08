@@ -1,0 +1,402 @@
+// ================================================================
+// REAL ESTATE PRO CRM — CANONICAL DBML SCHEMA (v2.0.0)
+// Sub-Account : 9% Realty | Southern Alberta, CA | jHEaG68TeCsXHXPhrVtU
+// Standard    : Contact · Opportunity · Company
+// Custom      : Property MLS · My Listing · Offer · Transaction
+// Import at   : https://dbdiagram.io
+// Generated   : 2026-07-07 | /docs/database/schema.dbml
+// NOTES:
+//  - GHL is the system of record; this DBML is an architectural model.
+//  - Association join tables are CONCEPTUAL — GHL manages relations via
+//    its Association Framework. Table names carry the LIVE association
+//    key in the note. Resolve IDs by key at bootstrap.
+//  - "Soft-FK" Refs are text cross-references NOT enforced by GHL —
+//    maintained by Workflow automations (see ASSOCIATIONS_REGISTRY.md §6).
+// ================================================================
+
+// ================================================================
+// STANDARD GHL OBJECTS
+// ================================================================
+
+Table contact [
+  headercolor: #2980b9,
+  note: 'GHL Standard | key: contact | ID: 6a44a1e5581b923d9e657d3a | Multi-role: lead, buyer, seller, past client, vendor. Required: email. Searchable: name, email, phone, businessName, tags.'
+] {
+  id                        uuid    [pk, note: 'GHL record ID']
+  first_name                varchar [not null]
+  last_name                 varchar
+  email                     varchar [unique, not null, note: 'Required · primary display · searchable']
+  phone                     varchar
+  contact_type              varchar [note: 'lead | customer | prospect | past_client']
+  timezone                  varchar [note: 'default America/Edmonton']
+  company_name              varchar
+  tags                      json    [note: 'kebab-case namespaced: temperature:* type:* priority:*']
+  dnd_settings              json
+  company_id                uuid    [ref: > company.id, note: 'BUSINESSES_CONTACTS_ASSOCIATION (1 business per contact)']
+  // — Lead classification —
+  lead_source               varchar [note: 'Zillow | Realtor.com | Open House | Referral | SOI | Website | Social Media | Cold Outreach | Other']
+  lead_temperature          varchar [note: 'Hot | Warm | Cold | Dead — canonical']
+  temperature               varchar [note: 'LEGACY text · written by Lead Temperature Update workflow (v4 draft)']
+  buyer_seller_type         varchar [note: 'Buyer | Seller | Both | Investor | Renter']
+  lead_timeline             varchar [note: '0-1 | 1-3 | 3-6 | 6-12 | 12+ months']
+  preapproval_status        varchar [note: 'Not Started | In Progress | Conditional Approval | Pre-Approved | Cash Buyer | N/A']
+  lead_score                int
+  // — Buyer preferences —
+  property_type_preference  json    [note: 'multi-select']
+  bed_min                   smallint
+  bath_min                  decimal(3,1)
+  budget_max                decimal(12,2)
+  monthly_budget            decimal(12,2)
+  desired_possession_date   date
+  current_mortgage_status   varchar
+  target_roi                varchar
+  // — Seller —
+  reason_for_selling        text
+  current_address           varchar
+  closing_date              date
+  // — Vendor —
+  vendor_service_type       varchar [note: 'Lender | Inspector | Title Company | Stager | Photographer | Contractor | Appraiser | Attorney | Moving Company | Insurance Agent | Mortgage Specialist | Other']
+  vendor_priority           varchar [note: 'A (Preferred) | B (Alternate) | C (Backup)']
+  // — SOI & tracking —
+  soi_relationship          varchar [note: 'Family | Friend | Colleague | Past Client | Neighbor | Community | Other']
+  preferred_communication   varchar [note: 'Call | Text | Email | WhatsApp']
+  annual_touchpoint_goal    smallint
+  referral_count            smallint
+  referral_source_contact   varchar
+  vip_status                boolean
+  review_received           boolean
+  last_interaction_date     date
+  last_contact_date         date
+  closing_anniversary       date
+  notes_summary             text
+  // — Billing —
+  std_billing_address_full_name varchar
+  std_billing_address_phone     varchar
+  std_billing_address_address1  varchar
+  created_at                timestamp [default: `now()`]
+  updated_at                timestamp
+}
+
+Table company [
+  headercolor: #27ae60,
+  note: 'GHL Standard | key: business | ID: 6a44a1e5581b920951657d3c | Organizations only: brokerages, lenders, title cos, law firms. Individual vendors = Contact + vendor_service_type. Required: name.'
+] {
+  id          uuid      [pk]
+  name        varchar   [unique, not null, note: 'Required · primary display · searchable']
+  email       varchar   [note: 'searchable']
+  phone       varchar
+  address     varchar
+  city        varchar
+  state       varchar   [note: 'AB | BC | SK | …']
+  postalcode  varchar
+  country     varchar   [note: 'default Canada']
+  website     varchar
+  description text
+  created_at  timestamp [default: `now()`]
+  updated_at  timestamp
+}
+
+Table opportunity [
+  headercolor: #e67e22,
+  note: 'GHL Standard | key: opportunity | ID: 6a44a1e5581b9214c0657d3b | Deal engine. Naming: "LastName — Address". Required: name, contact_id, pipeline_id, pipeline_stage_id. Won → exactly one Transaction (workflow-enforced).'
+] {
+  id                    uuid          [pk]
+  name                  varchar       [not null, note: 'primary display']
+  contact_id            uuid          [not null, ref: > contact.id, note: 'primary contact; OPPORTUNITIES_CONTACTS_ASSOCIATION allows up to 25']
+  pipeline_id           uuid          [not null, note: 'Buyer Transaction (10) | Seller Transaction (9) | Lead Nurture (8) — resolve by name at bootstrap']
+  pipeline_stage_id     uuid          [not null]
+  opp_status            varchar       [note: 'open | won | lost | abandoned']
+  monetary_value        decimal(12,2) [note: 'CAD']
+  assigned_to           uuid          [note: 'GHL User ID']
+  source                varchar
+  lost_reason           varchar       [note: 'system field']
+  tags                  json
+  followers             json
+  // — Deal details (custom) —
+  deal_type             varchar       [note: 'Buyer Purchase | Seller Listing | Dual Agency | Referral Out']
+  mls_number            varchar(20)   [note: 'SOFT-FK → property_mls.mls · workflow-synced']
+  financing_type        varchar       [note: 'Conventional | CMHC Insured | FHA | VA | Cash | Private Lending | Other']
+  other_agent_name      varchar
+  other_agent_brokerage varchar
+  loss_reason           varchar       [note: 'Chose Another Agent | Not Ready | Unresponsive | Budget | Timing | Relocated | Found Property Independently | Market Conditions | Other']
+  closing_date          date
+  expected_close_date   date
+  conditions_deadline   date          [note: 'mirrors offer.conditions_deadline']
+  lead_quality_score    smallint      [note: '0–10 manual']
+  follow_up_count       smallint      [note: 'workflow-incremented']
+  created_at            timestamp     [default: `now()`]
+  updated_at            timestamp
+}
+
+// ================================================================
+// CUSTOM OBJECTS
+// ================================================================
+
+Table property_mls [
+  headercolor: #8e44ad,
+  note: 'Custom | key: custom_objects.properties | ID: 6a44a1e75fd80c02ec76b5ef | MLS universe for comps & buyer matching. API-sync only. mls UNIQUE (platform-enforced). Searchable: mls, full_address, property_name.'
+] {
+  id                 uuid          [pk]
+  mls                varchar(20)   [unique, not null, note: 'Natural key · primary display · e.g. A2123456']
+  property_name      varchar       [note: 'searchable']
+  full_address       varchar       [note: 'searchable']
+  property_status    varchar       [note: 'active | pending | sold | expired | withdrawn | coming_soon']
+  property_type      varchar       [note: 'single_family | condo | townhouse | multifamily | land | commercial']
+  sub_type           varchar       [note: 'detached | semi_detached | row_house | stacked | suite | other']
+  list_price         decimal(12,2)
+  sold_price         decimal(12,2) [note: 'null until sold']
+  tax_assessment     decimal(12,2)
+  condo_fees         decimal(10,2)
+  days_on_market     smallint
+  bedrooms           smallint
+  bathrooms          decimal(3,1)
+  square_footage     int
+  lot_size           decimal(10,2)
+  year_built         smallint
+  garage             varchar       [note: 'none | single_attached | double_attached | triple_attached | single_detached | double_detached']
+  basement           varchar       [note: 'none | unfinished | partially_finished | fully_finished']
+  heating_type       varchar       [note: 'forced_air | baseboard | radiant | boiler | geothermal']
+  features_amenities text
+  feature_highlights text
+  city               varchar
+  province           varchar(2)
+  postal             varchar(7)    [note: 'key is `postal` (not postal_code)']
+  latitude           decimal(9,6)
+  longitude          decimal(9,6)
+  listing_date       date
+  listing_expiry     date
+  sold_date          date
+  listing_url        varchar(500)
+  property_images    json          [note: 'FILE_UPLOAD']
+  property_notes     text
+  documents_ref      varchar       [note: 'comma-separated Supabase Storage UUIDs']
+  created_at         timestamp     [default: `now()`]
+  updated_at         timestamp
+}
+
+Table my_listing [
+  headercolor: #16a085,
+  note: "Custom | key: custom_objects.my_listings | ID: 6a44b1692c3079662fdd9736 | Agent's Realtor.ca inventory subset. Required: mls_number (soft-FK → property_mls.mls, workflow-synced). Searchable: mls_number."
+] {
+  id                  uuid          [pk]
+  mls_number          varchar(20)   [not null, note: 'Required · primary display · SOFT-FK → property_mls.mls']
+  listing_key         varchar       [note: 'Realtor.ca API key']
+  listing_status      varchar       [note: 'active | pending | sold | expired | withdrawn']
+  property_address    varchar
+  city                varchar
+  province            varchar(2)
+  postal_code         varchar(7)
+  property_type       varchar       [note: 'house | condo | townhouse | land | commercial (differs from property_mls enum)']
+  sub_type            varchar       [note: 'detached | semi_detached | row_house | stacked | suite']
+  bedrooms            smallint
+  bathrooms           decimal(3,1)
+  square_footage      int
+  lot_size            decimal(10,2)
+  year_built          smallint
+  listing_price       decimal(12,2)
+  listing_date        date
+  days_on_market      smallint
+  realtor_url         varchar(500)
+  open_house_date     date
+  listing_description text
+  agent_name          varchar
+  brokerage           varchar
+  photos_url          varchar(500)
+  tags                varchar       [note: 'comma-separated marketing tags']
+  notes               text
+  last_synced         date          [note: 'feed-freshness indicator']
+  created_at          timestamp     [default: `now()`]
+  updated_at          timestamp
+}
+
+Table offer [
+  headercolor: #c0392b,
+  note: 'Custom | key: custom_objects.real_estate_offer | ID: 6a44a1e75fd80c971d76b5f0 | Negotiation ledger — multiple rounds per deal; only one reaches accepted. offer_id: OFR-YYYYMMDD-NNN. Searchable: offer_id, property_address, mls_number.'
+] {
+  id                 uuid          [pk]
+  offer_id           varchar       [not null, note: 'Required · primary display · OFR-YYYYMMDD-NNN']
+  property_address   varchar       [note: 'denormalized · searchable']
+  mls_number         varchar(20)   [note: 'SOFT-FK → property_mls.mls · workflow-synced · searchable']
+  offer_type         varchar       [note: 'buyer_offer | seller_offer | counter_offer']
+  offer_status       varchar       [not null, note: 'pending | accepted | countered | rejected | closed | expired (field key: status)']
+  financing_type     varchar       [note: 'conventional | cmhc_insured | cash | private | other']
+  purchase_price     decimal(12,2)
+  deposit_amount     decimal(12,2)
+  additional_deposit decimal(12,2)
+  counter_price      decimal(12,2)
+  commission_amount  decimal(12,2)
+  commission_split   varchar       [note: 'e.g. 2.5% / 2.5%']
+  offer_date         date
+  expiry_date        date          [note: 'irrevocability expiry']
+  conditions_deadline date
+  closing_date       date
+  possession_date    date
+  legal_description  text
+  conditions         text
+  contingencies      text
+  terms_conditions   text
+  included_chattels  text
+  excluded_fixtures  text
+  notes              text          [note: 'addendums / negotiation notes']
+  submitted_by       varchar
+  documents_ref      varchar       [note: 'comma-separated Supabase Storage UUIDs']
+  created_at         timestamp     [default: `now()`]
+  updated_at         timestamp
+}
+
+Table transaction [
+  headercolor: #d35400,
+  note: 'Custom | key: custom_objects.transactions | ID: 6a44b1696a2c18dc4bd8dd08 | Deal-close hub — commissions, coordination, reporting. One per deal. transaction_id: TXN-YYYYMMDD-NNN. Searchable: transaction_id.'
+] {
+  id                       uuid          [pk]
+  transaction_id           varchar       [not null, note: 'Required · primary display · TXN-YYYYMMDD-NNN']
+  transaction_type         varchar       [note: 'sale | purchase | lease | referral']
+  tx_status                varchar       [note: 'under_contract | pending | closed | cancelled | failed (field key: status)']
+  brokerages               varchar
+  commission_split_details text
+  post_transaction_notes   text
+  referral_source          varchar
+  documents_ref            varchar       [note: 'comma-separated Supabase Storage UUIDs']
+  contract_price           decimal(12,2)
+  deposit_escrow           decimal(12,2)
+  commission_amount        decimal(12,2)
+  commission_rate          decimal(5,2)  [note: 'percentage, e.g. 3.50']
+  profit_net               decimal(12,2)
+  closing_date             date
+  inspection_deadline      date
+  appraisal_date           date
+  financing_deadline       date
+  final_walkthrough        date
+  created_at               timestamp     [default: `now()`]
+  updated_at               timestamp
+}
+
+// ================================================================
+// ASSOCIATION JOIN TABLES (conceptual — GHL Association Framework)
+// Table note carries the LIVE association key. role column shows which
+// key encodes the role (GHL relations carry no metadata; role = key).
+// ================================================================
+
+Table assoc_contact_property [
+  note: 'Keys: `contact` (interested, M:M) + `property_seller` (M:M). Buyer-interest matching drives property alerts.'
+] {
+  contact_id      uuid    [not null, ref: > contact.id]
+  property_mls_id uuid    [not null, ref: > property_mls.id]
+  role            varchar [note: 'interested (key: contact) | seller (key: property_seller)']
+  indexes { (contact_id, property_mls_id, role) [pk] }
+}
+
+Table assoc_contact_offer [
+  note: 'Keys: offer_buyer | offer_seller | offer_buyer_agent | offer_seller_agent (all M:M). Role encoded in key.'
+] {
+  contact_id uuid    [not null, ref: > contact.id]
+  offer_id   uuid    [not null, ref: > offer.id]
+  role       varchar [note: 'buyer | seller | buyer_agent | seller_agent (== association key)']
+  indexes { (contact_id, offer_id, role) [pk] }
+}
+
+Table assoc_contact_my_listing [
+  note: 'Keys: my_listings_seller | my_listings_buyer_lead (M:M). 1 primary seller + optional co-sellers.'
+] {
+  contact_id    uuid    [not null, ref: > contact.id]
+  my_listing_id uuid    [not null, ref: > my_listing.id]
+  role          varchar [note: 'seller | buyer_lead (== association key)']
+  indexes { (contact_id, my_listing_id, role) [pk] }
+}
+
+Table assoc_contact_transaction [
+  note: 'Keys: transaction_buyer | transaction_seller | transaction_listing_agent | transaction_selling_agent (M:M). Copied from Offer roles on conversion.'
+] {
+  contact_id     uuid    [not null, ref: > contact.id]
+  transaction_id uuid    [not null, ref: > transaction.id]
+  role           varchar [note: 'buyer | seller | listing_agent | selling_agent (== association key)']
+  indexes { (contact_id, transaction_id, role) [pk] }
+}
+
+Table assoc_opportunity_property [
+  note: 'Key: `opportunity` (1:1 — platform max 1 each side). Sync workflow writes property_mls.mls → opportunity.mls_number.'
+] {
+  opportunity_id  uuid [not null, unique, ref: > opportunity.id]
+  property_mls_id uuid [not null, unique, ref: > property_mls.id]
+  indexes { (opportunity_id, property_mls_id) [pk] }
+}
+
+Table assoc_offer_opportunity [
+  note: 'Key: offers_opportunity (1:M). One Opportunity generates multiple offer rounds; each Offer has one parent Opportunity.'
+] {
+  opportunity_id uuid [not null, ref: > opportunity.id]
+  offer_id       uuid [not null, unique, ref: > offer.id]
+  indexes { (opportunity_id, offer_id) [pk] }
+}
+
+Table assoc_offer_property [
+  note: 'Key: offers_property (M:1 — many offers per property). Sync workflow writes property_mls.mls → offer.mls_number.'
+] {
+  property_mls_id uuid [not null, ref: > property_mls.id]
+  offer_id        uuid [not null, unique, ref: > offer.id]
+  indexes { (property_mls_id, offer_id) [pk] }
+}
+
+Table assoc_offer_transaction [
+  note: 'Key: transaction_offer | APP-ENFORCED 1:1 | BUSINESS RULE: only offer_status = accepted converts; check for existing link before creating.'
+] {
+  offer_id       uuid [not null, unique, ref: > offer.id]
+  transaction_id uuid [not null, unique, ref: > transaction.id]
+  indexes { (offer_id, transaction_id) [pk] }
+}
+
+Table assoc_opportunity_transaction [
+  note: 'Key: transaction_opportunity | APP-ENFORCED 1:1 | BUSINESS RULE: only opp_status = won links; enables pipeline→commission reporting without traversing Offer.'
+] {
+  opportunity_id uuid [not null, unique, ref: > opportunity.id]
+  transaction_id uuid [not null, unique, ref: > transaction.id]
+  indexes { (opportunity_id, transaction_id) [pk] }
+}
+
+Table assoc_my_listing_property [
+  note: 'Key: my_listings_mls_property (use as 1:1) | Paired with my_listings.mls_number soft-FK. On My Listing create: search property_mls by mls, link if found.'
+] {
+  my_listing_id   uuid [not null, unique, ref: > my_listing.id]
+  property_mls_id uuid [not null, ref: > property_mls.id]
+  indexes { (my_listing_id, property_mls_id) [pk] }
+}
+
+Table assoc_my_listing_offer [
+  note: 'Key: my_listings_offers (M:M). Agent listing receives competing offers.'
+] {
+  my_listing_id uuid [not null, ref: > my_listing.id]
+  offer_id      uuid [not null, ref: > offer.id]
+  indexes { (my_listing_id, offer_id) [pk] }
+}
+
+Table assoc_my_listing_opportunity [
+  note: 'Key: my_listings_opportunity (M:M). Listing ↔ seller-side deal.'
+] {
+  my_listing_id  uuid [not null, ref: > my_listing.id]
+  opportunity_id uuid [not null, ref: > opportunity.id]
+  indexes { (my_listing_id, opportunity_id) [pk] }
+}
+
+Table assoc_my_listing_transaction [
+  note: 'Key: my_listings_transactions | APP-ENFORCED 1:1 | On tx_status → closed: set my_listing.listing_status = sold.'
+] {
+  my_listing_id  uuid [not null, unique, ref: > my_listing.id]
+  transaction_id uuid [not null, unique, ref: > transaction.id]
+  indexes { (my_listing_id, transaction_id) [pk] }
+}
+
+Table assoc_property_transaction [
+  note: 'Key: transaction_property (M:M). On tx_status → closed: set property_status = sold, populate sold_price + sold_date.'
+] {
+  property_mls_id uuid [not null, ref: > property_mls.id]
+  transaction_id  uuid [not null, ref: > transaction.id]
+  indexes { (property_mls_id, transaction_id) [pk] }
+}
+
+// ================================================================
+// SOFT FOREIGN KEYS (text cross-references — NOT platform-enforced)
+// Maintain via Workflow automations + app write paths.
+// ================================================================
+Ref: offer.mls_number       > property_mls.mls
+Ref: my_listing.mls_number  > property_mls.mls
+Ref: opportunity.mls_number > property_mls.mls
