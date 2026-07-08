@@ -37,9 +37,11 @@ The initial build of all 18 phases is complete and merged to `main`. A full-repo
 | **`TASKS.md`** | The remediation plan — dependency-ordered tasks with per-task instructions and acceptance criteria. | Deciding what to build next; checking a task's Definition of Done. |
 | **`PRD.md`** | Product Requirements — the *what & why*. Scope, personas, architecture, data/integration model, performance strategy, per-module requirements. | You need the requirement or acceptance bar for a feature. |
 | **`design.md`** | Design system: OKLCH tokens, typography, layout shells, components, patterns, motion, voice. | Building or fixing any UI; writing copy/empty states. |
-| **`GHL_Integration_Mapping.md`** | Screen → GHL endpoint/field mapping for every screen, plus modal field maps, association-key registry, custom-field dictionary, enums. | Wiring any screen to GHL; you need the exact endpoint, field, filter, or tag. |
-| **`Real Estate Pro CRM — Full Integration Schema.md`** | Consolidated GHL data schema — object catalog, data dictionary, tags/custom values/custom fields, associations matrix, ERD. | Modeling data; understanding an object's fields, relationships, or cardinality. |
-| **`Entity Breakdown.md`** | Entity-level breakdown supporting the schema doc. | Deep-diving a specific record type. |
+| **`/docs/database/`** | **Canonical (v2.0.0) source of truth** for fields, associations, enums — `DATA_DICTIONARY.md`, `ASSOCIATIONS_REGISTRY.md`, `MIGRATION_MAP.md`, `AGENT_DB_GUIDE.md`, `schema.dbml`. | Any question about a field key, enum option, association key, or old→new migration. **This wins over the docs below.** |
+| **`GHL_INTEGRATION_MAPPING.md`** | Screen → endpoint/field/**component/hook** mapping, using canonical keys (replaces the old `GHL_Integration_Mapping.md`). | Wiring any screen to GHL; the exact endpoint, field, filter, tag, and which `src/` file owns it. |
+| **`INTEGRATION_SCHEMA.md`** | Consolidated reference — object registry, tags, custom values, system-native objects, API quick reference (replaces the old `Real Estate Pro CRM — Full Integration Schema.md`). | Object catalog, tags/custom values, API endpoint cheat-sheet. |
+| **`ENTITY_BREAKDOWN.md`** | Entity-level breakdown + **code ownership** + known code↔schema gaps (replaces the old `Entity Breakdown.md`). | Deep-diving a record type; which feature/hook/service owns it. |
+| **`SCHEMA_ALIGNMENT_TASKS.md`** | Dependency-ordered task list to align code with the canonical schema. | Fixing deprecated keys, the missing transactions service, deal-lifecycle, the association registry. |
 | **`README.md`** | Setup, env vars, PIT creation guide, architecture notes. | Environment setup; onboarding. |
 
 > **Note:** endpoint paths shown in older docs are not guaranteed correct — several were found wrong in the review. When implementing Workstream A, **verify every endpoint against the official GHL API 2.0 docs** (https://marketplace.gohighlevel.com/docs/), which are the source of truth.
@@ -52,8 +54,9 @@ The initial build of all 18 phases is complete and merged to `main`. A full-repo
 - **"Why is this a bug / what's the evidence?"** → `REVIEW_REPORT.md` (§3 critical, §9 deep pass).
 - **"What should this feature do / what's the acceptance bar?"** → `PRD.md` (module section + §7 performance + §10 non-functional).
 - **"How should this look / what tokens/components?"** → `design.md`.
-- **"Which GHL endpoint/field/tag for this screen?"** → `GHL_Integration_Mapping.md`, verified against the official GHL API docs.
-- **"What fields/relationships does this object have?"** → `Real Estate Pro CRM — Full Integration Schema.md` + `Entity Breakdown.md`.
+- **"Which GHL endpoint/field/tag for this screen?"** → `GHL_INTEGRATION_MAPPING.md`, verified against the official GHL API docs.
+- **"What fields/relationships/enums does this object have?"** → `/docs/database/` (canonical) → `ENTITY_BREAKDOWN.md` + `INTEGRATION_SCHEMA.md` for context.
+- **"What code is misaligned with the schema and how do I fix it?"** → `SCHEMA_ALIGNMENT_TASKS.md` (+ `ENTITY_BREAKDOWN.md §12` gap list).
 - **"How does Supabase auth/storage work here?"** → `PRD.md §6.2` + `supabase/migrations/*` (the migrations are the source of truth for the actual schema).
 
 ---
@@ -87,8 +90,8 @@ See `PRD.md §5.2` for the authoritative list. Toolchain: `bun run typecheck` ·
 - **Supabase project:** `https://xdenkkphnhjjpdirvsii.supabase.co` (publishable key in `.env`; secret key server-side only — never in the client bundle).
 - **Custom objects:** `custom_objects.my_listings`, `custom_objects.properties` (unique on `mls`), `custom_objects.real_estate_offer`, `custom_objects.transactions`. Use the `OBJECT_KEYS` constant (TASKS.md A1) — never string literals at call sites.
 - **Pipelines:** Lead Nurture · Buyer Transaction (10 stages) · Seller Transaction (9 stages) — IDs resolved at bootstrap via `PipelineRegistry`.
-- **Association keys:** `offer_to_contact`, `offer_to_property`, `opportunity_to_property`, `mls_to_property`, `opportunity_to_transaction`, `BUSINESSES_CONTACTS_ASSOCIATION`.
+- **Association keys (canonical):** resolve the 24 live keys by name at bootstrap — e.g. `offer_buyer`/`offer_seller`/`offer_buyer_agent`/`offer_seller_agent`, `offers_property`, `offers_opportunity`, `opportunity` (Property↔Opp, 1:1), `transaction_offer`/`transaction_opportunity`/`my_listings_transactions` (app-enforced 1:1), `my_listings_mls_property`, `BUSINESSES_CONTACTS_ASSOCIATION`, `OPPORTUNITIES_CONTACTS_ASSOCIATION`. Full list: `/docs/database/ASSOCIATIONS_REGISTRY.md`. ⚠ The old placeholder keys (`offer_to_contact`, `offer_to_property`, `opportunity_to_property`, `mls_to_property`, `opportunity_to_transaction`, `listing_to_contact`) are **deprecated** — map via `/docs/database/MIGRATION_MAP.md §1`.
 
 ---
 
-*If a doc and this file ever disagree: `TASKS.md` governs what to do now, `REVIEW_REPORT.md` governs the evidence, `PRD.md` governs requirements, `design.md` governs visuals, and `Real Estate Pro CRM — Full Integration Schema.md` + `GHL_Integration_Mapping.md` govern data (endpoint paths verified against official GHL docs). This file only points you to them.*
+*If a doc and this file ever disagree: `TASKS.md` governs what to do now, `REVIEW_REPORT.md` governs the evidence, `PRD.md` governs requirements, `design.md` governs visuals, and `/docs/database/` (canonical) → `ENTITY_BREAKDOWN.md` + `GHL_INTEGRATION_MAPPING.md` + `INTEGRATION_SCHEMA.md` govern data (endpoint paths verified against official GHL docs). Schema-alignment fixes are tracked in `SCHEMA_ALIGNMENT_TASKS.md`. This file only points you to them.*
