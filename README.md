@@ -1,38 +1,69 @@
-# /docs/database — Database Documentation Package
+# Real Estate Pro CRM
 
-**Product:** Real Estate Pro CRM | **Sub-Account:** 9% Realty — Southern Alberta (`jHEaG68TeCsXHXPhrVtU`)
-**Backend:** GoHighLevel (GHL) sub-account via Private Integration Token · Supabase (auth + document storage)
-**Package Version:** 2.0.0 | Generated: 2026-07-07 | Supersedes: v1.x schema sections of `Real Estate Pro CRM — Full Integration Schema.md` and §18–22 of `GHL_Integration_Mapping.md`
+A production-ready React web application for real estate professionals. Features a responsive design from a single codebase (Desktop + Mobile), live data integration with GoHighLevel (GHL) via Private Integration Tokens (PIT), and Supabase for user authentication and file storage.
 
----
+## Architecture
 
-## What lives here
+- **Frontend Framework:** React 18 + Vite + TypeScript (strict mode)
+- **Routing:** React Router v6
+- **State Management:** TanStack Query v5 with local storage persistence
+- **Styling:** Tailwind CSS + CSS-variable OKLCH token system + shadcn/ui
+- **Forms & Validation:** React Hook Form + Zod
+- **Auth & Storage:** Supabase
+- **Data Source:** GoHighLevel (GHL) API 2.0 via Private Integration Token (PIT)
 
-| File | Purpose | Read this when… |
-|---|---|---|
-| `DATA_DICTIONARY.md` | **Canonical field schema** for all 7 objects — every field key, type, enum, required/unique/searchable flag, and convention | You touch any field key, form, column, filter, or payload |
-| `ASSOCIATIONS_REGISTRY.md` | **Canonical relationship registry** — live association keys, cardinality, forward/reverse labels, role pattern, 1:1 business rules, workflow hooks | You link records, render an association panel, or build a workflow trigger |
-| `schema.dbml` | Reconciled DBML — paste into dbdiagram.io to regenerate the ERD | You need the visual ERD or want to review structure at a glance |
-| `MIGRATION_MAP.md` | **Deprecated → canonical mapping** for every field key, association key, and enum value that changed | You are updating existing code, hooks, or components written against the old docs |
-| `AGENT_DB_GUIDE.md` | **AI-agent & developer alignment guide** — bootstrap registry, query-key conventions, hook ↔ object mapping, component ↔ field mapping, validation and write rules | You (human or agent) are writing or reviewing any code that reads/writes CRM data |
+## Code Formatting & Linting
 
-## Document precedence (conflict resolution order)
+Code formatting and code quality checks are handled entirely via ESLint. We do not use Prettier in this project in order to maintain a single source of truth for code style rules. Run `npm run lint` or `bun run lint` to verify the codebase.
 
-1. **Live GHL API schema** (`GET /objects/{key}?fetchProperties=true`) — always wins.
-2. `DATA_DICTIONARY.md` + `ASSOCIATIONS_REGISTRY.md` (this package) — canonical written record of #1.
-3. `Real Estate Pro CRM — Full Integration Schema.md` — retained for API quick-reference (Part 7) and history; its Part 2/3 field & association tables are superseded by this package.
-4. `GHL_Integration_Mapping.md` — retained for **screen → endpoint** mapping only. Its §18 field mapping, §19 association keys, §20 field dictionary, and §22 enum lists are **deprecated**; use `MIGRATION_MAP.md`.
+## Setup & Environment Variables
 
-## Hard rules for AI agents (non-negotiable)
+Create a `.env` file in the root directory (do not commit this file). See `.env.example` for the required variables:
 
-- **Never invent a field key.** If a key is not in `DATA_DICTIONARY.md`, verify against the live API before use.
-- **Custom-object field keys always carry the full dotted prefix in API payloads:** `custom_objects.properties.mls`, never bare `mls`.
-- **Single-select values are option keys (snake_case), never display labels:** `"cmhc_insured"`, not `"CMHC Insured"`.
-- **Monetary = raw CAD numbers** (`500000`), **dates = ISO 8601** (`"2026-07-15"`), **null until known** (never `0` or `1970-01-01` placeholders).
-- **Association IDs are resolved at bootstrap by key** — never hard-code association IDs; keys are in `ASSOCIATIONS_REGISTRY.md`.
-- **1:1 conversions (Offer→Transaction, Opportunity→Transaction, My Listing→Transaction) are workflow/app-enforced**, not platform-enforced. Always check for an existing link before creating.
-- **Soft-FKs (`*.mls_number` → `properties.mls`) are plain text.** Whenever code creates the platform association, it must also write the soft-FK field (and vice-versa checks in reads).
+```env
+VITE_SUPABASE_URL=your_supabase_project_url
+VITE_SUPABASE_PUBLISHABLE_KEY=your_supabase_anon_key
+```
 
-## Versioning
+> **Note:** The `VITE_SUPABASE_PUBLISHABLE_KEY` is public-by-design, but ensure your Supabase project has Row Level Security (RLS) enabled. The GHL Location ID should be treated as non-secret-but-private.
 
-Bump `Package Version` (semver) whenever a field, enum, or association changes in GHL Settings, and record it in each file's changelog. The Data Dictionary is regenerated from the live API; the other files are maintained by hand against it.
+## Creating a GoHighLevel Private Integration Token (PIT)
+
+1. Log in to your GHL account and navigate to **Settings > Private Integrations**.
+2. Click **Create New** or **New Integration**.
+3. Select the required scopes. This application requires:
+   - `contacts.readonly`, `contacts.write`
+   - `opportunities.readonly`, `opportunities.write`
+   - `objects.readonly`, `objects.write`
+   - `associations.readonly`, `associations.write`
+   - `conversations.readonly`, `conversations/message.write`
+   - `calendars.readonly`, `calendars/events.readonly`, `calendars/events.write`
+   - `users.readonly`
+   - `locations.readonly`
+   - `locations/customFields.readonly`, `locations/customValues.readonly`
+   - `tags.readonly`, `tags.write`
+   - `medias.readonly`, `medias.write`
+   - `tasks.readonly`, `tasks.write`
+   - `notes.readonly`, `notes.write`
+   - `templates.readonly`
+4. Copy the generated token and your Location ID.
+5. In the CRM, after signing up, you will be prompted to enter these credentials in the Integrations Settings tab.
+
+> **Development Fallback:** In local development mode (`npm run dev`), you can bypass the Integrations onboarding screen by setting `VITE_GHL_PIT` and `VITE_GHL_LOCATION_ID` in your `.env` file. These fallbacks are ignored in production builds.
+
+> **Document Uploads:** Note that progress tracking for document uploads to Supabase Storage is currently limited by the underlying SDK capabilities. Large files may appear to pause before completion.
+
+## Migration Notes for v2 (Edge Function Proxy)
+
+Currently, the application communicates directly with the GHL API from the browser using the stored PIT. In v2, this will be migrated to a Supabase Edge Function proxy for enhanced security and to support webhooks.
+
+- **Frontend changes:** The `ghlFetch` utility in `src/lib/ghl/client.ts` should be updated to point to your Supabase Edge Function URL instead of the direct GHL endpoint.
+- **Backend changes:** Deploy an Edge Function that reads the user's stored PIT from the `ghl_credentials` table, attaches it to the request, and forwards it to GHL.
+
+## Development Commands
+
+- `npm run dev` - Start development server
+- `npm run build` - Build for production
+- `npm run preview` - Preview production build
+- `npm run typecheck` - Run TypeScript compiler check
+- `npm run lint` - Run ESLint
