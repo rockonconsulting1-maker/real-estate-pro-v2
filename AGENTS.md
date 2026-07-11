@@ -12,9 +12,10 @@ A **Real Estate Pro CRM** — one responsive React 18 + TypeScript (Vite) web ap
 
 - **Data backend:** a GoHighLevel (GHL) sub-account, read/written **directly from the browser** using a **Private Integration Token (PIT)**.
 - **Auth:** Supabase (email/password). The PIT + `locationId` are stored server-side on an RLS-protected Supabase table and loaded to memory for the session.
-- **This is the v1 live-data release.** No mock data ships. A later v2 (out of scope) moves GHL access behind a Supabase Edge Function proxy + webhooks — so keep the GHL transport isolated.
+- **This is the v1 live-data release.** No mock data ships.
+- **v2 is now in progress** (see `_build_plan/`): GHL access moves behind a Supabase Edge Function proxy, a Postgres mirror + webhooks, GHL Media vault, and Documents & Contracts. Keep the GHL transport isolated so the proxy swaps just that layer. Milestone 1 (proxy foundation) is built and deployed — see `_build_plan/milestones/1-proxy-foundation/milestone-log.md`.
 
-Full product intent, scope, and requirements: **`PRD.md`**.
+Full v1 product intent, scope, and requirements: **`PRD.md`**. For v2 architecture and scope, **`_build_plan/prd.md` supersedes `PRD.md`** (see §8).
 
 ---
 
@@ -95,3 +96,13 @@ See `PRD.md §5.2` for the authoritative list. Toolchain: `bun run typecheck` ·
 ---
 
 *If a doc and this file ever disagree: `TASKS.md` governs what to do now, `REVIEW_REPORT.md` governs the evidence, `PRD.md` governs requirements, `design.md` governs visuals, and `/docs/database/` (canonical) → `ENTITY_BREAKDOWN.md` + `GHL_INTEGRATION_MAPPING.md` + `INTEGRATION_SCHEMA.md` govern data (endpoint paths verified against official GHL docs). Schema-alignment fixes are tracked in `SCHEMA_ALIGNMENT_TASKS.md`. This file only points you to them.*
+
+---
+
+## 8. `_build_plan/` (v2)
+
+The `_build_plan/` folder contains the v2 PRD (`_build_plan/prd.md`), per-milestone prompts (`_build_plan/milestones/*/prompt.md`), milestone logs (`_build_plan/milestones/*/milestone-log.md`), and the v2 task lists (`_build_plan/tasks/*.md`) used to guide the v2 build-out (Edge Function proxy, Supabase mirror, GHL webhooks, GHL Media vault, Documents & Contracts). These files are **temporary** — they exist for documentation and guidance only. They are **not** functional: no code, configuration, or runtime logic in this codebase should import, reference, or depend on anything inside `_build_plan/`.
+
+Do not treat `_build_plan/` as long-living documentation for the codebase. The codebase will evolve past the assumptions and decisions captured here. Once the v2 milestones are complete, this folder is expected to be deleted.
+
+For v2 work, `_build_plan/prd.md` supersedes the v1 `PRD.md` on architecture and scope; `design.md`, `GHL_INTEGRATION_MAPPING.md`, the schema docs, and `docs/database/` remain authoritative for their domains. Deployed v2 backend lives in `supabase/functions/` with its endpoint contract in `supabase/edge-functions.md`.

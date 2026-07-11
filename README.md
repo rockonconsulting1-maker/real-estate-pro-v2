@@ -53,12 +53,16 @@ VITE_SUPABASE_PUBLISHABLE_KEY=your_supabase_anon_key
 
 > **Document Uploads:** Note that progress tracking for document uploads to Supabase Storage is currently limited by the underlying SDK capabilities. Large files may appear to pause before completion.
 
-## Migration Notes for v2 (Edge Function Proxy)
+## v2 (Edge Function Proxy, Mirror & Webhooks)
 
-Currently, the application communicates directly with the GHL API from the browser using the stored PIT. In v2, this will be migrated to a Supabase Edge Function proxy for enhanced security and to support webhooks.
+v2 moves all GHL access behind a Supabase Edge Function proxy (so the PIT never reaches the browser), adds a Supabase Postgres mirror kept fresh by GHL webhooks, and moves documents to the GHL Media Library. The full v2 plan lives in `_build_plan/` (`_build_plan/prd.md` is the authoritative v2 architecture/scope reference).
 
-- **Frontend changes:** The `ghlFetch` utility in `src/lib/ghl/client.ts` should be updated to point to your Supabase Edge Function URL instead of the direct GHL endpoint.
-- **Backend changes:** Deploy an Edge Function that reads the user's stored PIT from the `ghl_credentials` table, attaches it to the request, and forwards it to GHL.
+**Milestone 1 — Proxy Foundation (built & deployed):**
+
+- **Backend:** two Edge Functions live in `supabase/functions/` — `ghl-proxy` (JWT-verified pass-through that attaches the user's PIT server-side) and `ghl-credentials` (save/rotate + test-connection, validating against GHL before saving). The PIT is loaded via a service-role RPC (`public.ghl_proxy_gate`, migration `0008`) that also enforces central per-user rate limiting; `pit_token` is write-only to client roles (migration `0007`). The published endpoint contract is `supabase/edge-functions.md`.
+- **Frontend (remaining, FE-1.1):** `src/lib/ghl/client.ts` still calls GHL directly from the browser. It needs to be repointed to `{SUPABASE_URL}/functions/v1/ghl-proxy`, swap the PIT header for the Supabase session token + `apikey`, and drop browser-side PIT loading. See `supabase/edge-functions.md` for the exact contract and `_build_plan/tasks/TASKS_FRONTEND.md`.
+
+**Edge Function secrets** (set in the Supabase project): `GHL_BASE_URL`, `GHL_API_VERSION` (= `v3`), `GHL_PIT` + `GHL_LOCATION_ID` (dev fallback), optional `SENTRY_DSN` / `ENVIRONMENT` / `ALLOWED_ORIGIN`.
 
 ## Development Commands
 
