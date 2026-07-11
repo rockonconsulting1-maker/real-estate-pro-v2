@@ -1,4 +1,4 @@
--- 0003_sb_1_1_ghl_proxy_rate_gate.sql
+-- 0008_ghl_proxy_rate_gate.sql
 -- SB-1.1 Central per-user rate limiting for the ghl-proxy Edge Function
 -- (applied to xdenkkphnhjjpdirvsii on 2026-07-09, incl. service_role grant fix)
 -- One RPC both enforces a fixed 10s window AND returns the caller's PIT +
